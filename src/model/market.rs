@@ -4,18 +4,16 @@ use chrono::{DateTime, Utc};
 
 use super::Outcome;
 
-use {once_cell::sync::Lazy, regex::Regex};
 
 use crate::controller::{
     convert_string_to_nullable_time, WebserviceRequest, WebserviceResponse, GAMMA_API, GET_MARKETS,
 };
 
-use crate::model::DbMode;
-
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use string_builder::Builder;
 
+#[allow(dead_code)]
 pub struct Market {
     id: String,
     pub question: String,
@@ -45,6 +43,7 @@ pub struct Market {
     best_bid: f64,
     best_ask: f64,
 }
+#[warn(dead_code)]
 
 impl Market {
     pub fn from_poly_response_market(prm: &PolyResponseMarket) -> Self {

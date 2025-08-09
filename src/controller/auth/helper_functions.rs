@@ -1,8 +1,5 @@
 use crate::controller::L1Header;
 use crate::model::Account;
-use ndarray::prelude::*;
-use ndarray_stats::QuantileExt;
-use plotters::prelude::*;
 
 use base64::engine::general_purpose::URL_SAFE;
 use base64::prelude::*;
@@ -133,75 +130,6 @@ pub fn get_zero_address() -> String {
     "0x0000000000000000000000000000000000000000".to_string()
 }
 
-pub fn plot_lin_reg(array: ArrayBase<ndarray::OwnedRepr<f64>, Dim<[usize; 2]>>, a: f64, b: f64) {
-    // Converting from an array to a Linfa Dataset
-    let (data, targets) = (
-        (&array).slice(s![.., 0..1]).to_owned(),
-        (&array).column(1).to_owned(),
-    );
-
-    // Min-Max values for plotting
-    let x_min = data.min().unwrap().ceil();
-    let y_min = targets.min().unwrap().ceil();
-
-    let x_max = data.max().unwrap().ceil();
-    let y_max = targets.max().unwrap().ceil();
-
-    // Clone data for plotting
-    let xs = data.clone();
-
-    //Plotting
-    let root_area =
-        BitMapBackend::new("target/linear_regression.png", (600, 400)).into_drawing_area();
-    root_area.fill(&WHITE).unwrap();
-
-    // ANCHOR: chart_context
-    let mut ctx = ChartBuilder::on(&root_area)
-        .set_label_area_size(LabelAreaPosition::Left, 40)
-        .set_label_area_size(LabelAreaPosition::Bottom, 40)
-        .caption("Legend", ("sans-serif", 40))
-        .caption("Linear Regression", ("sans-serif", 40))
-        .build_cartesian_2d(x_min..x_max + 1.0, y_min..y_max + 1.0)
-        .unwrap();
-    // ANCHOR_END: chart_context
-
-    ctx.configure_mesh().draw().unwrap();
-
-    // ANCHOR: draw_line
-    let mut line_points = Vec::with_capacity(2);
-
-    for x in xs {
-        line_points.push((x as f64, (x as f64 * a) + b));
-    }
-    // We can configure the rounded precision of our result here
-    let precision = 2;
-    let label = format!("y = {:.2$}x + {:.2}", a, b, precision);
-    ctx.draw_series(LineSeries::new(line_points, &BLACK))
-        .unwrap()
-        .label(&label);
-    // ANCHOR_END: draw_line
-
-    // ANCHOR: draw_points
-    let num_points = array.shape()[0];
-    let mut points = Vec::with_capacity(num_points);
-    for i in 0..array.shape()[0] {
-        let point = (array[[i, 0]], array[[i, 1]]);
-        let circle = Circle::new(point, 5, &RED);
-        points.push(circle);
-    }
-
-    ctx.draw_series(points).unwrap();
-    // ANCHOR_END: draw_points
-
-    // ANCHOR: labels
-    ctx.configure_series_labels()
-        .border_style(&BLACK)
-        .background_style(&WHITE.mix(0.8))
-        .draw()
-        .unwrap();
-    // ANCHOR_END: labels
-}
-
 #[cfg(test)]
 mod helper_functions_tests {
 
@@ -276,14 +204,6 @@ mod helper_functions_tests {
         let offsetted_time = offset_current_time(-HOUR_MILLIS);
 
         assert_eq!(now.timestamp_millis() - HOUR_MILLIS, offsetted_time);
-    }
-
-    #[test]
-    pub fn format_redis_timestamp() {
-        let ts_string = "1731090377222-0";
-        let timestamp = format_redis_ts(ts_string);
-
-        assert_eq!(1731090377222, timestamp);
     }
 
     #[test]

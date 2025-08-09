@@ -20,6 +20,3 @@ pub use market_data_interfaces::*;
 
 pub mod pricing_controller;
 pub use pricing_controller::*;
-
-pub mod math;
-pub use math::*;

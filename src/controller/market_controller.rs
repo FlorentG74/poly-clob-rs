@@ -5,14 +5,10 @@
     clippy::indexing_slicing
 )]
 
-use super::load_all;
 use super::webservice;
 use super::WebserviceRequest;
-use crate::model::Market;
 use crate::model::MarketsResponse;
 use crate::model::PolyResponseMarket;
-use crate::model::PolymarketTagsResponse;
-use crate::model::Tag;
 
 use std::collections::HashMap;
 use std::io::Error;

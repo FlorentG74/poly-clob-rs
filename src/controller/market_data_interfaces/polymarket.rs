@@ -3,10 +3,8 @@ use crate::controller::WebserviceRequest;
 use crate::controller::WebserviceResponse;
 use crate::controller::CLOB_API;
 use crate::controller::GET_PRICES;
-use crate::model::Price;
 
 use super::MarketDataConnector;
-use chrono::Utc;
 use futures::SinkExt;
 use futures::TryStreamExt;
 use reqwest::Client;

@@ -1,10 +1,7 @@
-use chrono::{NaiveDateTime, Utc};
+use chrono::NaiveDateTime;
 
-use polars::prelude::*;
 
-use crate::controller::{
-    offset_current_time, timestamp_to_datetime, PolymarketPrice,
-};
+use crate::controller::PolymarketPrice;
 
 use super::Outcome;
 
