@@ -1,4 +1,5 @@
 use crate::api::auth::{build_l1_signature, EIP712Struct};
+use crate::models::Side;
 use string_builder::Builder;
 
 use alloy::{
@@ -29,7 +30,7 @@ pub struct Order {
     pub expiration: i64,
     pub nonce: i32,
     pub fee_rate_bps: i32,
-    pub side: i32,
+    pub side: Side,
     pub signature_type: i32,
     pub order_type: String,
     signature: String,
@@ -45,7 +46,7 @@ impl Order {
         taker_amount: i32,
         expiration: i64,
         fee_rate_bps: i32,
-        side: i32,
+        side: Side,
         order_type: &str,
     ) -> Self {
         Order {
@@ -70,7 +71,7 @@ impl Order {
 
         self.signature = build_l1_signature(self, salt, pk).to_string();
 
-        let buy_sell = if self.side == 0 {"BUY"} else {"SELL"};
+        let buy_sell = self.side.to_string();
 
         log::debug!("Signature added to msg: {}", self.signature);
 
@@ -170,7 +171,7 @@ impl EIP712Struct for Order {
             DynSolValue::Uint(U256::from(self.expiration), 256),
             DynSolValue::Uint(U256::from(self.nonce), 256),
             DynSolValue::Uint(U256::from(self.fee_rate_bps), 256),
-            DynSolValue::Uint(U256::from(self.side), 8),
+            DynSolValue::Uint(U256::from(self.side.to_int()), 8),
             DynSolValue::Uint(U256::from(self.signature_type), 8),
         ])
     }

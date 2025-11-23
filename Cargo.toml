@@ -13,7 +13,7 @@ keywords = ["polymarket", "prediction-markets", "clob", "api", "blockchain"]
 categories = ["api-bindings", "web-programming::http-client", "cryptography::cryptocurrencies"]
 
 [dependencies]
-serde = { version = "^1.0", default-features = false}
+serde = { version = "^1.0", default-features = false, features = ["derive"] }
 reqwest = { version = "0.12.9", features = ["default-tls", "json"] }
 futures = { version = "0.3" }
 serde_json = "1.0"
@@ -29,6 +29,11 @@ strum_macros = "0.26.4"
 alloy = { version = "0.5.4", features = ["dyn-abi", "signer-local"] }
 log = "0.4.22"
 env_logger = { version = "0.11.5" }
+diesel = { version = "2.2.5", features = ["postgres"], optional = true }
+
+[features]
+default = []
+with-diesel = ["diesel"]
 
 # [package.metadata.cargo-machete]
 # ignored = ["strum"]

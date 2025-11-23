@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use super::Side;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MarketOrders {
     pub data: Vec<MarketOrder>,
@@ -16,7 +18,7 @@ pub struct MarketOrder {
     pub maker_address: String,
     pub market: String,
     pub asset_id: String,
-    pub side: String,
+    pub side: Side,
     pub original_size: String,
     pub size_matched: String,
     pub price: String,

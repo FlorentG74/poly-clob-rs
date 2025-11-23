@@ -2,11 +2,20 @@ use reqwest::Method;
 use serde::Serialize;
 
 use super::{WebserviceRequest, CLOB_API, GET_PRICES};
+use crate::models::Side;
 
 #[derive(Serialize)]
 struct PolymarketPriceRequest {
     token_id: String,
-    side: String,
+    #[serde(serialize_with = "serialize_side_lowercase")]
+    side: Side,
+}
+
+fn serialize_side_lowercase<S>(side: &Side, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(side.to_lowercase_str())
 }
 
 impl WebserviceRequest {
@@ -31,11 +40,11 @@ fn build_prices_query(token_ids: &[String]) -> String {
     for token_id in token_ids {
         instruments.push(PolymarketPriceRequest {
             token_id: token_id.to_string(),
-            side: "sell".to_string(),
+            side: Side::Sell,
         });
         instruments.push(PolymarketPriceRequest {
             token_id: token_id.to_string(),
-            side: "buy".to_string(),
+            side: Side::Buy,
         });
     }
 

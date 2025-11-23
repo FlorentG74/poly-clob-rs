@@ -20,6 +20,7 @@
 //! ## Supporting Types
 //!
 //! - [`AssetType`] - Asset type (COLLATERAL/CONDITIONAL)
+//! - [`Side`] - Order side (BUY/SELL)
 //!
 //! ## Traits
 //!
@@ -41,7 +42,7 @@
 //!     50,
 //!     9999999999,
 //!     10,
-//!     0, // BUY
+//!     Side::Buy,
 //!     "GTC",
 //! );
 //! ```
@@ -58,6 +59,7 @@ pub mod tag;
 pub mod position;
 pub mod open_order;
 pub mod polymarket_price;
+pub mod side;
 
 pub use account::*;
 pub use api_response::*;
@@ -71,3 +73,4 @@ pub use tag::*;
 pub use position::*;
 pub use open_order::*;
 pub use polymarket_price::*;
+pub use side::*;

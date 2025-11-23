@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{ApiResponse, PolyResponseMarket};
+use super::{ApiResponse, PolyResponseMarket, Side};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OpenOrder {
@@ -10,7 +10,7 @@ pub struct OpenOrder {
     pub maker_address: String,
     pub market: PolyResponseMarket,
     pub asset_id: String,
-    pub side: String,
+    pub side: Side,
     pub original_size: f64,
     pub size_matched: f64,
     pub price: f64,
