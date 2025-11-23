@@ -1,0 +1,34 @@
+[package]
+name = "poly-clob-rs"
+version = "0.1.0"
+edition = "2021"
+authors = ["Florent <FlorentG74@proton.me>"]
+description = "A Rust client library for the Polymarket CLOB (Central Limit Order Book) API"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/FlorentG74/poly-clob-rs"
+homepage = "https://github.com/FlorentG74/poly-clob-rs"
+documentation = "https://docs.rs/poly-clob-rs"
+readme = "README.md"
+keywords = ["polymarket", "prediction-markets", "clob", "api", "blockchain"]
+categories = ["api-bindings", "web-programming::http-client", "cryptography::cryptocurrencies"]
+
+[dependencies]
+serde = { version = "^1.0", default-features = false}
+reqwest = { version = "0.12.9", features = ["default-tls", "json"] }
+futures = { version = "0.3" }
+serde_json = "1.0"
+tokio = { version = "1.40.0",  default-features = false, features = ["macros", "rt-multi-thread"] }
+dotenv = "0.15.0"
+string-builder = "0.2.0"
+hex = { version = "0.4.3" }
+chrono = { version = "0.4.38", features = ["serde"] }
+sha2 = { version = "0.10.8" }
+hmac = "0.12.1"
+base64 = { version = "0.22.1" }
+strum_macros = "0.26.4"
+alloy = { version = "0.5.4", features = ["dyn-abi", "signer-local"] }
+log = "0.4.22"
+env_logger = { version = "0.11.5" }
+
+# [package.metadata.cargo-machete]
+# ignored = ["strum"]

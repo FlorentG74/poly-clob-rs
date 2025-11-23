@@ -1,4 +1,4 @@
 /target
 .env
-.vs/slnx.sqlite
 Cargo.lock
+*.log
