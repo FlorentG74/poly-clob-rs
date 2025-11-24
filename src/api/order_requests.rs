@@ -2,9 +2,9 @@
 //!
 //! This module provides functions for placing and managing orders on the Polymarket CLOB.
 
-use crate::{MarketOrders, ORDERS, OpenOrder, market_requests, webservice};
 use crate::api::auth::{build_l2_headers, get_timestamp, get_zero_address};
-use crate::models::{Account, Order, Side, OrderType};
+use crate::models::{Account, Order, OrderType, Side};
+use crate::{market_requests, webservice, MarketOrders, OpenOrder, ORDERS};
 use reqwest::header::*;
 
 use super::clob_endpoints::{CLOB_API, POST_ORDER};
@@ -95,13 +95,7 @@ pub async fn place_limit_order(
         signer.private_key.as_str(),
     );
 
-    let l2_headers = build_l2_headers(
-        &signer,
-        method,
-        request_path,
-        &body,
-        &salt,
-    );
+    let l2_headers = build_l2_headers(&signer, method, request_path, &body, &salt);
 
     log::trace!("Signed Order body: {}", &body);
 
@@ -158,7 +152,6 @@ pub async fn place_limit_order(
         }
     }
 }
-
 
 pub async fn get_all_open_orders(signer: &Account) -> Vec<OpenOrder> {
     get_open_orders_by_market(signer, "").await
@@ -271,4 +264,3 @@ pub async fn get_open_orders_by_market(signer: &Account, market_id: &str) -> Vec
         }
     }
 }
-

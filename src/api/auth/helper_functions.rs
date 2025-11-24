@@ -6,7 +6,6 @@ pub const HOUR_MILLIS: i64 = DAY_MILLIS / 24;
 pub const MINUTE_MILLIS: i64 = HOUR_MILLIS / 60;
 pub const SECOND_MILLIS: i64 = 1000;
 
-
 pub fn timestamp_to_datetime(millis: i64) -> chrono::NaiveDateTime {
     DateTime::from_timestamp_millis(millis).unwrap().naive_utc()
 }

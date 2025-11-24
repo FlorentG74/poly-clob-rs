@@ -30,18 +30,18 @@
 
 pub mod auth;
 pub mod clob_endpoints;
-pub mod request;
-pub mod webservice;
 pub mod event_requests;
 pub mod market_requests;
 pub mod order_requests;
 pub mod position_requests;
 pub mod price_requests;
+pub mod request;
 pub mod tag_requests;
+pub mod webservice;
 
 pub use auth::*;
 pub use clob_endpoints::*;
-pub use request::*;
-pub use webservice::*;
 pub use market_requests::*;
 pub use order_requests::*;
+pub use request::*;
+pub use webservice::*;

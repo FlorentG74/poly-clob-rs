@@ -7,8 +7,8 @@ use reqwest::{Client, Method, RequestBuilder};
 use std::time::Duration;
 use tokio::time::sleep;
 
-use crate::models::ApiResponse;
 use super::WebserviceRequest;
+use crate::models::ApiResponse;
 
 const MAX_RETRIES: u32 = 3;
 const RETRY_DELAY_MS: u64 = 2000;
@@ -83,73 +83,71 @@ where
         }
 
         match request.send().await {
-            Ok(response) => {
-                match response.status() {
-                    reqwest::StatusCode::OK => {
-                        let text = response
-                            .text()
-                            .await
-                            .expect("Error - can't extract API Response");
-                        log::trace!("API Response: {}", text);
+            Ok(response) => match response.status() {
+                reqwest::StatusCode::OK => {
+                    let text = response
+                        .text()
+                        .await
+                        .expect("Error - can't extract API Response");
+                    log::trace!("API Response: {}", text);
 
-                        match serde_json::from_str::<T>(&text) {
-                            Ok(ws_response) => {
-                                let nb_results_retrieved: i32 =
-                                    ws_response.nb_results().try_into().unwrap();
+                    match serde_json::from_str::<T>(&text) {
+                        Ok(ws_response) => {
+                            let nb_results_retrieved: i32 =
+                                ws_response.nb_results().try_into().unwrap();
 
-                                log::debug!("Retrieved {:?} results", nb_results_retrieved);
+                            log::debug!("Retrieved {:?} results", nb_results_retrieved);
 
-                                if nb_results_retrieved > 0 {
-                                    if nb_results_retrieved == web_service_request.get_limit() {
-                                        return (
-                                            next_offset + web_service_request.get_limit(),
-                                            Some(ws_response),
-                                        );
-                                    } else {
-                                        return (-1, Some(ws_response));
-                                    }
+                            if nb_results_retrieved > 0 {
+                                if nb_results_retrieved == web_service_request.get_limit() {
+                                    return (
+                                        next_offset + web_service_request.get_limit(),
+                                        Some(ws_response),
+                                    );
                                 } else {
-                                    return (-1, None);
+                                    return (-1, Some(ws_response));
                                 }
-                            }
-                            Err(err) => {
-                                log::error!("Error - can't deserialize API Response. Err: {}", err);
+                            } else {
                                 return (-1, None);
                             }
                         }
-                    }
-                    reqwest::StatusCode::TOO_MANY_REQUESTS
-                    | reqwest::StatusCode::GATEWAY_TIMEOUT
-                    | reqwest::StatusCode::BAD_GATEWAY => {
-                        if attempt < MAX_RETRIES {
-                            log::warn!(
-                                "Err {} - retrying after {} ms (attempt {}/{})",
-                                response.status(),
-                                RETRY_DELAY_MS,
-                                attempt,
-                                MAX_RETRIES
-                            );
-                            sleep(Duration::from_millis(RETRY_DELAY_MS)).await;
-                            continue;
-                        } else {
-                            log::error!("Err {} - max retries exceeded", response.status());
-                            return (next_offset, None);
+                        Err(err) => {
+                            log::error!("Error - can't deserialize API Response. Err: {}", err);
+                            return (-1, None);
                         }
                     }
-                    reqwest::StatusCode::UNAUTHORIZED => {
-                        log::error!("Authentication failed for request {}", callable_url);
-                        return (next_offset, None);
-                    }
-                    other => {
-                        log::error!(
-                            "Unexpected error in service call: {:?}; url: {}",
-                            other,
-                            callable_url
+                }
+                reqwest::StatusCode::TOO_MANY_REQUESTS
+                | reqwest::StatusCode::GATEWAY_TIMEOUT
+                | reqwest::StatusCode::BAD_GATEWAY => {
+                    if attempt < MAX_RETRIES {
+                        log::warn!(
+                            "Err {} - retrying after {} ms (attempt {}/{})",
+                            response.status(),
+                            RETRY_DELAY_MS,
+                            attempt,
+                            MAX_RETRIES
                         );
+                        sleep(Duration::from_millis(RETRY_DELAY_MS)).await;
+                        continue;
+                    } else {
+                        log::error!("Err {} - max retries exceeded", response.status());
                         return (next_offset, None);
                     }
                 }
-            }
+                reqwest::StatusCode::UNAUTHORIZED => {
+                    log::error!("Authentication failed for request {}", callable_url);
+                    return (next_offset, None);
+                }
+                other => {
+                    log::error!(
+                        "Unexpected error in service call: {:?}; url: {}",
+                        other,
+                        callable_url
+                    );
+                    return (next_offset, None);
+                }
+            },
             Err(err) => {
                 log::error!("Error - request failed. Err: {}", err);
                 return (-1, None);
@@ -191,10 +189,7 @@ where
 /// # Ok(())
 /// # }
 /// ```
-pub async fn fetch_one<T>(
-    client: &Client,
-    web_service_request: &WebserviceRequest,
-) -> Option<T>
+pub async fn fetch_one<T>(client: &Client, web_service_request: &WebserviceRequest) -> Option<T>
 where
     T: for<'a> serde::Deserialize<'a> + ApiResponse,
 {

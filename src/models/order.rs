@@ -1,5 +1,5 @@
 use crate::api::auth::{build_l1_signature, EIP712Struct};
-use crate::models::{Side, OrderType};
+use crate::models::{OrderType, Side};
 use string_builder::Builder;
 
 use alloy::{
@@ -182,7 +182,8 @@ mod tests {
     use super::*;
 
     // Test values from poly_order_test
-    const TEST_TOKEN_ID: &str = "9791340778034406846471990250402404386251253109836550662455900621767083631393";
+    const TEST_TOKEN_ID: &str =
+        "9791340778034406846471990250402404386251253109836550662455900621767083631393";
     const TEST_MAKER: &str = "0x1234567890123456789012345678901234567890"; // Mock address
     const TEST_TAKER: &str = "0x0000000000000000000000000000000000000000"; // Zero address
 
@@ -218,7 +219,12 @@ mod tests {
 
     #[test]
     fn test_order_with_different_order_types() {
-        let order_types = vec![OrderType::FOK, OrderType::FAK, OrderType::GTC, OrderType::GTD];
+        let order_types = vec![
+            OrderType::FOK,
+            OrderType::FAK,
+            OrderType::GTC,
+            OrderType::GTD,
+        ];
 
         for order_type in order_types {
             let order = Order::new(
@@ -316,7 +322,11 @@ mod tests {
             OrderType::FOK,
         );
 
-        let body = order.build_order_query_body("123", "key", "0x1234567890123456789012345678901234567890123456789012345678901234");
+        let body = order.build_order_query_body(
+            "123",
+            "key",
+            "0x1234567890123456789012345678901234567890123456789012345678901234",
+        );
         assert!(body.contains("\"orderType\": \"FOK\""));
     }
 
@@ -335,7 +345,11 @@ mod tests {
             OrderType::FAK,
         );
 
-        let body = order.build_order_query_body("123", "key", "0x1234567890123456789012345678901234567890123456789012345678901234");
+        let body = order.build_order_query_body(
+            "123",
+            "key",
+            "0x1234567890123456789012345678901234567890123456789012345678901234",
+        );
         assert!(body.contains("\"orderType\": \"FAK\""));
     }
 
@@ -354,7 +368,11 @@ mod tests {
             OrderType::GTC,
         );
 
-        let body = order.build_order_query_body("123", "key", "0x1234567890123456789012345678901234567890123456789012345678901234");
+        let body = order.build_order_query_body(
+            "123",
+            "key",
+            "0x1234567890123456789012345678901234567890123456789012345678901234",
+        );
         assert!(body.contains("\"orderType\": \"GTC\""));
     }
 
@@ -373,7 +391,11 @@ mod tests {
             OrderType::GTD,
         );
 
-        let body = order.build_order_query_body("123", "key", "0x1234567890123456789012345678901234567890123456789012345678901234");
+        let body = order.build_order_query_body(
+            "123",
+            "key",
+            "0x1234567890123456789012345678901234567890123456789012345678901234",
+        );
         assert!(body.contains("\"orderType\": \"GTD\""));
     }
 
@@ -392,7 +414,11 @@ mod tests {
             OrderType::GTC,
         );
 
-        let body = order.build_order_query_body("123", "key", "0x1234567890123456789012345678901234567890123456789012345678901234");
+        let body = order.build_order_query_body(
+            "123",
+            "key",
+            "0x1234567890123456789012345678901234567890123456789012345678901234",
+        );
         assert!(body.contains("\"side\": \"BUY\""));
     }
 
@@ -411,7 +437,11 @@ mod tests {
             OrderType::GTC,
         );
 
-        let body = order.build_order_query_body("123", "key", "0x1234567890123456789012345678901234567890123456789012345678901234");
+        let body = order.build_order_query_body(
+            "123",
+            "key",
+            "0x1234567890123456789012345678901234567890123456789012345678901234",
+        );
         assert!(body.contains("\"side\": \"SELL\""));
     }
 
@@ -430,7 +460,11 @@ mod tests {
             OrderType::FOK,
         );
 
-        let body = order.build_order_query_body("123", "key", "0x1234567890123456789012345678901234567890123456789012345678901234");
+        let body = order.build_order_query_body(
+            "123",
+            "key",
+            "0x1234567890123456789012345678901234567890123456789012345678901234",
+        );
 
         // Signature should be populated after building the body
         assert!(order.signature.len() > 0);
@@ -453,7 +487,11 @@ mod tests {
         );
 
         let api_key = "my_test_api_key_12345";
-        let body = order.build_order_query_body("123", api_key, "0x1234567890123456789012345678901234567890123456789012345678901234");
+        let body = order.build_order_query_body(
+            "123",
+            api_key,
+            "0x1234567890123456789012345678901234567890123456789012345678901234",
+        );
 
         assert!(body.contains(&format!("\"owner\": \"{}\"", api_key)));
     }
@@ -474,7 +512,11 @@ mod tests {
         );
 
         let salt = "987654321";
-        let body = order.build_order_query_body(salt, "key", "0x1234567890123456789012345678901234567890123456789012345678901234");
+        let body = order.build_order_query_body(
+            salt,
+            "key",
+            "0x1234567890123456789012345678901234567890123456789012345678901234",
+        );
 
         assert!(body.contains(&format!("\"salt\": {}", salt)));
     }

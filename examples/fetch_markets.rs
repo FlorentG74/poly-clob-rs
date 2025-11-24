@@ -36,11 +36,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Display first 10 markets
     for (i, market) in markets.iter().take(10).enumerate() {
-        println!(
-            "{}. {}",
-            i + 1,
-            market.question.as_deref().unwrap_or("N/A")
-        );
+        println!("{}. {}", i + 1, market.question.as_deref().unwrap_or("N/A"));
         println!("   Slug: {}", market.slug.as_deref().unwrap_or("N/A"));
         println!("   Active: {}", market.active.unwrap_or(false));
 
