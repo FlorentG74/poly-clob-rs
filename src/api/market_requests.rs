@@ -1,7 +1,11 @@
+use std::collections::HashMap;
+
 use reqwest::Method;
 use string_builder::Builder;
 
-use super::{WebserviceRequest, GAMMA_API, GET_MARKET, GET_MARKETS, WITH_SLUG};
+use crate::{MarketsResponse, PolyResponseMarket};
+
+use super::{webservice, WebserviceRequest, GAMMA_API, GET_MARKET, GET_MARKETS, WITH_SLUG};
 
 impl WebserviceRequest {
     pub fn new_market_ws_request() -> Self {
@@ -72,3 +76,53 @@ impl WebserviceRequest {
         builder.string().expect("Error in String conversion")
     }
 }
+
+    pub async fn map_multiple_market_by_condition_ids_ws(
+        condition_ids: &Vec<String>,
+    ) -> Result<HashMap<String, PolyResponseMarket>, String> {
+        let mut markets_map: HashMap<String, PolyResponseMarket> = HashMap::new();
+
+        //If market isnt available in database, try to load it from the API
+        let markets_vec =
+            load_market_by_condition_ids(condition_ids, 0)
+                .await
+                .unwrap();
+
+        for m in markets_vec.into_iter() {
+            let condition_id = m.condition_id.clone();
+            markets_map.insert(condition_id.unwrap(), m);
+        }
+
+        Ok(markets_map)
+    }
+
+    
+    pub async fn load_market_by_condition_ids(
+        condition_ids: &Vec<String>,
+        next_offset: i32,
+    ) -> Option<MarketsResponse> {
+
+        let client = reqwest::Client::builder()
+            .build()
+            .expect("Error creating client");
+
+        let mut web_service_request = WebserviceRequest::new_markets_ws_request();
+        web_service_request.with_condition_ids(condition_ids);
+
+        let (_, result) =
+            webservice::fetch_batch::<MarketsResponse>(&client, &web_service_request, next_offset)
+                .await;
+
+        result
+    }
+
+    pub async fn fetch_market_by_slug(slug: &str) -> Option<PolyResponseMarket> {
+        let client = reqwest::Client::builder()
+            .build()
+            .expect("Error creating client");
+
+        let mut web_service_request = WebserviceRequest::new_markets_ws_request();
+        web_service_request.with_slug(slug);
+
+        webservice::fetch_one::<PolyResponseMarket>(&client, &web_service_request).await
+    }

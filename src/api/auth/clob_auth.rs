@@ -7,7 +7,14 @@ use alloy::{
 use futures::executor::block_on;
 use std::str::FromStr;
 
+use crate::Account;
+
 use super::EIP712Struct;
+use base64::engine::general_purpose::URL_SAFE;
+use base64::prelude::*;
+use hmac::Mac;
+use reqwest::header::HeaderMap;
+use chrono::prelude::*;
 
 fn generate_values_hash(value: &DynSolValue) -> Vec<u8> {
     let mut encoded_values: Vec<u8> = Vec::new();
@@ -97,4 +104,69 @@ pub fn build_l1_signature(eip712_struct: &dyn EIP712Struct, salt: &str, signer_p
     result.push_str(hex::encode(signature.as_bytes()).as_str());
 
     result
+}
+
+pub fn build_l2_headers(
+    signer: &Account,
+    method: &str,
+    request_path: &str,
+    body: &str,
+    salt: &str,
+) -> HeaderMap {
+    let poly_address = &signer.pub_key;
+    let api_key = &signer.api_key;
+    let api_secret = &signer.api_secret;
+    let api_passphrase = &signer.api_passphrase;
+
+    let mut headers = HeaderMap::new();
+
+    headers.append("POLY_ADDRESS", poly_address.parse().unwrap());
+    headers.append("POLY_API_KEY", api_key.parse().unwrap());
+    headers.append("POLY_PASSPHRASE", api_passphrase.parse().unwrap());
+
+    let timestamp = if "".eq(salt) {
+        get_timestamp()
+    } else {
+        salt.to_string()
+    };
+
+    headers.append("POLY_TIMESTAMP", timestamp.parse().unwrap());
+    let signature = build_hmac_signature(api_secret, &timestamp, method, request_path, body);
+    headers.append("POLY_SIGNATURE", signature.parse().unwrap());
+
+    headers
+}
+
+pub fn build_hmac_signature(
+    api_secret: &str,
+    timestamp: &str,
+    method: &str,
+    request_path: &str,
+    request_body: &str,
+) -> String {
+    let message = timestamp.to_string() + method + request_path + request_body;
+
+    let b64_decoded_secret = URL_SAFE.decode(api_secret).unwrap();
+    let b64_decoded_secret_slice = b64_decoded_secret.as_slice();
+
+    type HmacSha256 = hmac::Hmac<sha2::Sha256>;
+    let mut mac = HmacSha256::new_from_slice(b64_decoded_secret_slice)
+        .expect("HMAC can take key of any size");
+    mac.update(message.as_bytes());
+
+    let bytes = mac.finalize().into_bytes();
+
+    let mut signature: String = Default::default();
+    URL_SAFE.encode_string(bytes, &mut signature);
+
+    signature
+}
+
+pub fn get_zero_address() -> String {
+    "0x0000000000000000000000000000000000000000".to_string()
+}
+
+pub fn get_timestamp() -> String {
+    let now = Utc::now();
+    now.timestamp().to_string()
 }
