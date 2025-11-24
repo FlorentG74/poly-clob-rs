@@ -53,7 +53,7 @@
 //! ### Placing Orders
 //!
 //! ```rust,no_run
-//! use poly_clob_rs::{Account, Order};
+//! use poly_clob_rs::{Account, Order, Side, OrderType};
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -68,8 +68,8 @@
 //!         50,
 //!         9999999999,
 //!         10,
-//!         0, // BUY
-//!         "GTC",
+//!         Side::Buy,
+//!         OrderType::GTC,
 //!     );
 //!
 //!     let body = order.build_order_query_body("123456", &account.api_key, &account.private_key);

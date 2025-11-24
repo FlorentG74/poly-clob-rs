@@ -4,7 +4,7 @@
 
 use crate::{MarketOrders, ORDERS, OpenOrder, market_requests, webservice};
 use crate::api::auth::{build_l2_headers, get_timestamp, get_zero_address};
-use crate::models::{Account, Order, Side};
+use crate::models::{Account, Order, Side, OrderType};
 use reqwest::header::*;
 
 use super::clob_endpoints::{CLOB_API, POST_ORDER};
@@ -85,7 +85,7 @@ pub async fn place_limit_order(
         expiration,
         fee_rate_bps,
         side,
-        "FOK",
+        OrderType::FOK,
     );
 
     let salt = get_timestamp();

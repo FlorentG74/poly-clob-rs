@@ -21,6 +21,7 @@
 //!
 //! - [`AssetType`] - Asset type (COLLATERAL/CONDITIONAL)
 //! - [`Side`] - Order side (BUY/SELL)
+//! - [`OrderType`] - Order type (FOK/FAK/GTC/GTD)
 //!
 //! ## Traits
 //!
@@ -30,7 +31,7 @@
 //! ## Example
 //!
 //! ```rust,no_run
-//! use poly_clob_rs::{Account, Order};
+//! use poly_clob_rs::{Account, Order, Side, OrderType};
 //!
 //! let account = Account::actual_account_from_env();
 //! let order = Order::new(
@@ -43,7 +44,7 @@
 //!     9999999999,
 //!     10,
 //!     Side::Buy,
-//!     "GTC",
+//!     OrderType::GTC,
 //! );
 //! ```
 
@@ -53,6 +54,7 @@ pub mod clob_types;
 pub mod clob_orders;
 pub mod market;
 pub mod order;
+pub mod order_type;
 pub mod event;
 pub mod event_series;
 pub mod tag;
@@ -67,6 +69,7 @@ pub use clob_types::*;
 pub use clob_orders::*;
 pub use market::*;
 pub use order::*;
+pub use order_type::*;
 pub use event::*;
 pub use event_series::*;
 pub use tag::*;

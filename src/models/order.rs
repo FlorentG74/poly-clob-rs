@@ -1,5 +1,5 @@
 use crate::api::auth::{build_l1_signature, EIP712Struct};
-use crate::models::Side;
+use crate::models::{Side, OrderType};
 use string_builder::Builder;
 
 use alloy::{
@@ -32,7 +32,7 @@ pub struct Order {
     pub fee_rate_bps: i32,
     pub side: Side,
     pub signature_type: i32,
-    pub order_type: String,
+    pub order_type: OrderType,
     signature: String,
 }
 
@@ -47,7 +47,7 @@ impl Order {
         expiration: i64,
         fee_rate_bps: i32,
         side: Side,
-        order_type: &str,
+        order_type: OrderType,
     ) -> Self {
         Order {
             maker: maker.to_string(),
@@ -61,7 +61,7 @@ impl Order {
             nonce: 0,
             side,
             signature_type: 1, // Polymarket linked wallet
-            order_type: order_type.to_string(),
+            order_type,
             signature: "".to_string(),
         }
     }
@@ -174,5 +174,325 @@ impl EIP712Struct for Order {
             DynSolValue::Uint(U256::from(self.side.to_int()), 8),
             DynSolValue::Uint(U256::from(self.signature_type), 8),
         ])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Test values from poly_order_test
+    const TEST_TOKEN_ID: &str = "9791340778034406846471990250402404386251253109836550662455900621767083631393";
+    const TEST_MAKER: &str = "0x1234567890123456789012345678901234567890"; // Mock address
+    const TEST_TAKER: &str = "0x0000000000000000000000000000000000000000"; // Zero address
+
+    #[test]
+    fn test_order_new() {
+        let order = Order::new(
+            TEST_MAKER,
+            TEST_MAKER,
+            TEST_TAKER,
+            TEST_TOKEN_ID,
+            100,
+            50,
+            9999999999,
+            10,
+            Side::Buy,
+            OrderType::FOK,
+        );
+
+        assert_eq!(order.maker, TEST_MAKER);
+        assert_eq!(order.signer, TEST_MAKER);
+        assert_eq!(order.taker, TEST_TAKER);
+        assert_eq!(order.token_id, TEST_TOKEN_ID);
+        assert_eq!(order.maker_amount, 100);
+        assert_eq!(order.taker_amount, 50);
+        assert_eq!(order.expiration, 9999999999);
+        assert_eq!(order.fee_rate_bps, 10);
+        assert_eq!(order.nonce, 0);
+        assert_eq!(order.side, Side::Buy);
+        assert_eq!(order.signature_type, 1);
+        assert_eq!(order.order_type, OrderType::FOK);
+        assert_eq!(order.signature, "");
+    }
+
+    #[test]
+    fn test_order_with_different_order_types() {
+        let order_types = vec![OrderType::FOK, OrderType::FAK, OrderType::GTC, OrderType::GTD];
+
+        for order_type in order_types {
+            let order = Order::new(
+                TEST_MAKER,
+                TEST_MAKER,
+                TEST_TAKER,
+                TEST_TOKEN_ID,
+                100,
+                50,
+                9999999999,
+                10,
+                Side::Buy,
+                order_type,
+            );
+
+            assert_eq!(order.order_type, order_type);
+        }
+    }
+
+    #[test]
+    fn test_order_with_buy_side() {
+        let order = Order::new(
+            TEST_MAKER,
+            TEST_MAKER,
+            TEST_TAKER,
+            TEST_TOKEN_ID,
+            100,
+            50,
+            9999999999,
+            10,
+            Side::Buy,
+            OrderType::GTC,
+        );
+
+        assert_eq!(order.side, Side::Buy);
+    }
+
+    #[test]
+    fn test_order_with_sell_side() {
+        let order = Order::new(
+            TEST_MAKER,
+            TEST_MAKER,
+            TEST_TAKER,
+            TEST_TOKEN_ID,
+            100,
+            50,
+            9999999999,
+            10,
+            Side::Sell,
+            OrderType::GTC,
+        );
+
+        assert_eq!(order.side, Side::Sell);
+    }
+
+    #[test]
+    fn test_build_order_query_body_structure() {
+        let mut order = Order::new(
+            TEST_MAKER,
+            TEST_MAKER,
+            TEST_TAKER,
+            TEST_TOKEN_ID,
+            100,
+            50,
+            9999999999,
+            10,
+            Side::Buy,
+            OrderType::FOK,
+        );
+
+        let salt = "123456789";
+        let api_key = "test_api_key";
+        let pk = "0x1234567890123456789012345678901234567890123456789012345678901234";
+
+        let body = order.build_order_query_body(salt, api_key, pk);
+
+        // Verify the body is valid JSON
+        assert!(body.starts_with("{"));
+        assert!(body.ends_with("}"));
+
+        // Verify key fields are present in the JSON
+        assert!(body.contains("\"order\""));
+        assert!(body.contains("\"salt\""));
+        assert!(body.contains("\"maker\""));
+        assert!(body.contains("\"signer\""));
+        assert!(body.contains("\"taker\""));
+        assert!(body.contains("\"tokenId\""));
+        assert!(body.contains("\"makerAmount\""));
+        assert!(body.contains("\"takerAmount\""));
+        assert!(body.contains("\"expiration\""));
+        assert!(body.contains("\"nonce\""));
+        assert!(body.contains("\"feeRateBps\""));
+        assert!(body.contains("\"side\""));
+        assert!(body.contains("\"signatureType\""));
+        assert!(body.contains("\"signature\""));
+        assert!(body.contains("\"owner\""));
+        assert!(body.contains("\"orderType\""));
+    }
+
+    #[test]
+    fn test_build_order_query_body_order_type_fok() {
+        let mut order = Order::new(
+            TEST_MAKER,
+            TEST_MAKER,
+            TEST_TAKER,
+            TEST_TOKEN_ID,
+            100,
+            50,
+            9999999999,
+            10,
+            Side::Buy,
+            OrderType::FOK,
+        );
+
+        let body = order.build_order_query_body("123", "key", "0x1234567890123456789012345678901234567890123456789012345678901234");
+        assert!(body.contains("\"orderType\": \"FOK\""));
+    }
+
+    #[test]
+    fn test_build_order_query_body_order_type_fak() {
+        let mut order = Order::new(
+            TEST_MAKER,
+            TEST_MAKER,
+            TEST_TAKER,
+            TEST_TOKEN_ID,
+            100,
+            50,
+            9999999999,
+            10,
+            Side::Buy,
+            OrderType::FAK,
+        );
+
+        let body = order.build_order_query_body("123", "key", "0x1234567890123456789012345678901234567890123456789012345678901234");
+        assert!(body.contains("\"orderType\": \"FAK\""));
+    }
+
+    #[test]
+    fn test_build_order_query_body_order_type_gtc() {
+        let mut order = Order::new(
+            TEST_MAKER,
+            TEST_MAKER,
+            TEST_TAKER,
+            TEST_TOKEN_ID,
+            100,
+            50,
+            9999999999,
+            10,
+            Side::Buy,
+            OrderType::GTC,
+        );
+
+        let body = order.build_order_query_body("123", "key", "0x1234567890123456789012345678901234567890123456789012345678901234");
+        assert!(body.contains("\"orderType\": \"GTC\""));
+    }
+
+    #[test]
+    fn test_build_order_query_body_order_type_gtd() {
+        let mut order = Order::new(
+            TEST_MAKER,
+            TEST_MAKER,
+            TEST_TAKER,
+            TEST_TOKEN_ID,
+            100,
+            50,
+            9999999999,
+            10,
+            Side::Buy,
+            OrderType::GTD,
+        );
+
+        let body = order.build_order_query_body("123", "key", "0x1234567890123456789012345678901234567890123456789012345678901234");
+        assert!(body.contains("\"orderType\": \"GTD\""));
+    }
+
+    #[test]
+    fn test_build_order_query_body_buy_side() {
+        let mut order = Order::new(
+            TEST_MAKER,
+            TEST_MAKER,
+            TEST_TAKER,
+            TEST_TOKEN_ID,
+            100,
+            50,
+            9999999999,
+            10,
+            Side::Buy,
+            OrderType::GTC,
+        );
+
+        let body = order.build_order_query_body("123", "key", "0x1234567890123456789012345678901234567890123456789012345678901234");
+        assert!(body.contains("\"side\": \"BUY\""));
+    }
+
+    #[test]
+    fn test_build_order_query_body_sell_side() {
+        let mut order = Order::new(
+            TEST_MAKER,
+            TEST_MAKER,
+            TEST_TAKER,
+            TEST_TOKEN_ID,
+            100,
+            50,
+            9999999999,
+            10,
+            Side::Sell,
+            OrderType::GTC,
+        );
+
+        let body = order.build_order_query_body("123", "key", "0x1234567890123456789012345678901234567890123456789012345678901234");
+        assert!(body.contains("\"side\": \"SELL\""));
+    }
+
+    #[test]
+    fn test_build_order_query_body_contains_signature() {
+        let mut order = Order::new(
+            TEST_MAKER,
+            TEST_MAKER,
+            TEST_TAKER,
+            TEST_TOKEN_ID,
+            100,
+            50,
+            9999999999,
+            10,
+            Side::Buy,
+            OrderType::FOK,
+        );
+
+        let body = order.build_order_query_body("123", "key", "0x1234567890123456789012345678901234567890123456789012345678901234");
+
+        // Signature should be populated after building the body
+        assert!(order.signature.len() > 0);
+        assert!(body.contains(&format!("\"signature\": \"{}\"", order.signature)));
+    }
+
+    #[test]
+    fn test_build_order_query_body_includes_api_key() {
+        let mut order = Order::new(
+            TEST_MAKER,
+            TEST_MAKER,
+            TEST_TAKER,
+            TEST_TOKEN_ID,
+            100,
+            50,
+            9999999999,
+            10,
+            Side::Buy,
+            OrderType::FOK,
+        );
+
+        let api_key = "my_test_api_key_12345";
+        let body = order.build_order_query_body("123", api_key, "0x1234567890123456789012345678901234567890123456789012345678901234");
+
+        assert!(body.contains(&format!("\"owner\": \"{}\"", api_key)));
+    }
+
+    #[test]
+    fn test_build_order_query_body_includes_salt() {
+        let mut order = Order::new(
+            TEST_MAKER,
+            TEST_MAKER,
+            TEST_TAKER,
+            TEST_TOKEN_ID,
+            100,
+            50,
+            9999999999,
+            10,
+            Side::Buy,
+            OrderType::FOK,
+        );
+
+        let salt = "987654321";
+        let body = order.build_order_query_body(salt, "key", "0x1234567890123456789012345678901234567890123456789012345678901234");
+
+        assert!(body.contains(&format!("\"salt\": {}", salt)));
     }
 }
