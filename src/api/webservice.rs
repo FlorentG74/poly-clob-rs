@@ -55,9 +55,6 @@ pub async fn fetch_batch<T>(
 where
     T: for<'a> serde::Deserialize<'a> + ApiResponse,
 {
-    const MAX_RETRIES: u32 = 3;
-    const RETRY_DELAY_MS: u64 = 5000;
-
     for attempt in 1..=MAX_RETRIES {
         let callable_url = web_service_request.get_callable_url(next_offset);
         let request: RequestBuilder;
