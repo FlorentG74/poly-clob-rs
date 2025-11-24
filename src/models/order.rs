@@ -289,33 +289,16 @@ mod tests {
             OrderType::FOK,
         );
 
+        let expected_body = r#"{"order": {"salt": 123456789,"maker": "0x1234567890123456789012345678901234567890","signer": "0x1234567890123456789012345678901234567890","taker": "0x0000000000000000000000000000000000000000","tokenId": "9791340778034406846471990250402404386251253109836550662455900621767083631393","makerAmount": "100","takerAmount": "50","expiration": "9999999999","nonce": "0","feeRateBps": "10","side": "BUY","signatureType": 1,"signature": "0x513f7e9ebe22fc80d12446263dc6c89404932a7668aa7c4d54d2d1074d63ef1c31259122bf8c6490dac0a3c1fb7dfcf3285d6fe1d8179cc0a8384b33288787371b"},"owner": "test_api_key","orderType": "FOK"}"#;
+
         let salt = "123456789";
         let api_key = "test_api_key";
         let pk = "0x1234567890123456789012345678901234567890123456789012345678901234";
 
         let body = order.build_order_query_body(salt, api_key, pk);
 
-        // Verify the body is valid JSON
-        assert!(body.starts_with("{"));
-        assert!(body.ends_with("}"));
-
-        // Verify key fields are present in the JSON
-        assert!(body.contains("\"order\""));
-        assert!(body.contains("\"salt\""));
-        assert!(body.contains("\"maker\""));
-        assert!(body.contains("\"signer\""));
-        assert!(body.contains("\"taker\""));
-        assert!(body.contains("\"tokenId\""));
-        assert!(body.contains("\"makerAmount\""));
-        assert!(body.contains("\"takerAmount\""));
-        assert!(body.contains("\"expiration\""));
-        assert!(body.contains("\"nonce\""));
-        assert!(body.contains("\"feeRateBps\""));
-        assert!(body.contains("\"side\""));
-        assert!(body.contains("\"signatureType\""));
-        assert!(body.contains("\"signature\""));
-        assert!(body.contains("\"owner\""));
-        assert!(body.contains("\"orderType\""));
+        // Verify the body is as expected
+        assert!(expected_body.eq(&body));
     }
 
     #[test]
