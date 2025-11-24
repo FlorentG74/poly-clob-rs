@@ -77,52 +77,49 @@ impl WebserviceRequest {
     }
 }
 
-    pub async fn map_multiple_market_by_condition_ids_ws(
-        condition_ids: &Vec<String>,
-    ) -> Result<HashMap<String, PolyResponseMarket>, String> {
-        let mut markets_map: HashMap<String, PolyResponseMarket> = HashMap::new();
+pub async fn map_multiple_market_by_condition_ids_ws(
+    condition_ids: &Vec<String>,
+) -> Result<HashMap<String, PolyResponseMarket>, String> {
+    let mut markets_map: HashMap<String, PolyResponseMarket> = HashMap::new();
 
-        //If market isnt available in database, try to load it from the API
-        let markets_vec =
-            load_market_by_condition_ids(condition_ids, 0)
-                .await
-                .unwrap();
+    //If market isnt available in database, try to load it from the API
+    let markets_vec = load_markets_by_condition_ids(condition_ids, 0)
+        .await
+        .unwrap();
 
-        for m in markets_vec.into_iter() {
-            let condition_id = m.condition_id.clone();
-            markets_map.insert(condition_id.unwrap(), m);
-        }
-
-        Ok(markets_map)
+    for m in markets_vec.into_iter() {
+        let condition_id = m.condition_id.clone();
+        markets_map.insert(condition_id.unwrap(), m);
     }
 
-    
-    pub async fn load_market_by_condition_ids(
-        condition_ids: &Vec<String>,
-        next_offset: i32,
-    ) -> Option<MarketsResponse> {
+    Ok(markets_map)
+}
 
-        let client = reqwest::Client::builder()
-            .build()
-            .expect("Error creating client");
+pub async fn load_markets_by_condition_ids(
+    condition_ids: &Vec<String>,
+    next_offset: i32,
+) -> Option<MarketsResponse> {
+    let client = reqwest::Client::builder()
+        .build()
+        .expect("Error creating client");
 
-        let mut web_service_request = WebserviceRequest::new_markets_ws_request();
-        web_service_request.with_condition_ids(condition_ids);
+    let mut web_service_request = WebserviceRequest::new_markets_ws_request();
+    web_service_request.with_condition_ids(condition_ids);
 
-        let (_, result) =
-            webservice::fetch_batch::<MarketsResponse>(&client, &web_service_request, next_offset)
-                .await;
+    let (_, result) =
+        webservice::fetch_batch::<MarketsResponse>(&client, &web_service_request, next_offset)
+            .await;
 
-        result
-    }
+    result
+}
 
-    pub async fn fetch_market_by_slug(slug: &str) -> Option<PolyResponseMarket> {
-        let client = reqwest::Client::builder()
-            .build()
-            .expect("Error creating client");
+pub async fn fetch_market_by_slug(slug: &str) -> Option<PolyResponseMarket> {
+    let client = reqwest::Client::builder()
+        .build()
+        .expect("Error creating client");
 
-        let mut web_service_request = WebserviceRequest::new_markets_ws_request();
-        web_service_request.with_slug(slug);
+    let mut web_service_request = WebserviceRequest::new_markets_ws_request();
+    web_service_request.with_slug(slug);
 
-        webservice::fetch_one::<PolyResponseMarket>(&client, &web_service_request).await
-    }
+    webservice::fetch_one::<PolyResponseMarket>(&client, &web_service_request).await
+}
