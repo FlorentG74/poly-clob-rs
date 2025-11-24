@@ -6,8 +6,6 @@ use crate::{MarketOrders, ORDERS, OpenOrder, market_requests, webservice};
 use crate::api::auth::{build_l2_headers, get_timestamp, get_zero_address};
 use crate::models::{Account, Order, Side};
 use reqwest::header::*;
-use std::time::Duration;
-use tokio::time::sleep;
 
 use super::clob_endpoints::{CLOB_API, POST_ORDER};
 
@@ -143,8 +141,7 @@ pub async fn place_limit_order(
             Err(format!("Bad request: {}", error_text))
         }
         reqwest::StatusCode::TOO_MANY_REQUESTS => {
-            log::warn!("Rate Limit reached - pausing for 5 secs");
-            sleep(Duration::from_millis(5000)).await;
+            log::error!("Rate limit reached for request {}", callable_url);
             Err("Rate limit reached".to_string())
         }
         reqwest::StatusCode::UNAUTHORIZED => {
@@ -257,8 +254,7 @@ pub async fn get_open_orders_by_market(signer: &Account, market_id: &str) -> Vec
             open_orders
         }
         reqwest::StatusCode::TOO_MANY_REQUESTS => {
-            log::warn!("Rate Limit reached - pausing for 5 secs");
-            sleep(Duration::from_millis(5000)).await;
+            log::error!("Rate Limit reached - pausing for 5 secs");
             open_orders
         }
         reqwest::StatusCode::UNAUTHORIZED => {
