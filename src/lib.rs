@@ -72,7 +72,7 @@
 //!         OrderType::GTC,
 //!     );
 //!
-//!     let body = order.build_order_query_body("123456", &account.api_key, &account.private_key);
+//!     let body = order.build_order_query_body("123456", 0, &account.api_key, &account.private_key);
 //!     // Send body to CLOB API...
 //!     Ok(())
 //! }
