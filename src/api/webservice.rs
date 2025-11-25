@@ -3,7 +3,7 @@
 //! This module provides generic functions for making HTTP requests to the Polymarket API
 //! with automatic retry logic and error handling.
 
-use reqwest::{Client, Method, RequestBuilder};
+use reqwest::{Client, Method};
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -57,7 +57,6 @@ where
 {
     for attempt in 1..=MAX_RETRIES {
         let callable_url = web_service_request.get_callable_url(next_offset);
-        let request: RequestBuilder;
 
         log::debug!(
             "Calling method: {} on url: {} (attempt {}/{})",
@@ -67,20 +66,16 @@ where
             MAX_RETRIES
         );
 
-        match web_service_request.method {
-            Method::GET => {
-                request = client.get(&callable_url);
-            }
-            Method::POST => {
-                request = client
-                    .post(&callable_url)
-                    .body(web_service_request.get_body());
-            }
+        let request = match web_service_request.method {
+            Method::GET => client.get(&callable_url),
+            Method::POST => client
+                .post(&callable_url)
+                .body(web_service_request.get_body()),
             _ => {
                 log::error!("Unsupported Method");
                 return (-1, None);
             }
-        }
+        };
 
         match request.send().await {
             Ok(response) => match response.status() {
@@ -119,7 +114,8 @@ where
                 }
                 reqwest::StatusCode::TOO_MANY_REQUESTS
                 | reqwest::StatusCode::GATEWAY_TIMEOUT
-                | reqwest::StatusCode::BAD_GATEWAY => {
+                | reqwest::StatusCode::BAD_GATEWAY
+                | reqwest::StatusCode::CONFLICT => {
                     if attempt < MAX_RETRIES {
                         log::warn!(
                             "Err {} - retrying after {} ms (attempt {}/{})",
@@ -149,7 +145,13 @@ where
                 }
             },
             Err(err) => {
-                log::error!("Error - request failed. Err: {}", err);
+                log::error!(
+                    "Error - request failed. URL: {}, Err: {:?}, is_timeout: {}, is_connect: {}",
+                    callable_url,
+                    err,
+                    err.is_timeout(),
+                    err.is_connect()
+                );
                 return (-1, None);
             }
         }
@@ -195,7 +197,6 @@ where
 {
     for attempt in 1..=MAX_RETRIES {
         let callable_url = web_service_request.get_callable_url(0);
-        let request: RequestBuilder;
 
         log::debug!(
             "Calling method: {} on url: {} (attempt {}/{})",
@@ -205,25 +206,27 @@ where
             MAX_RETRIES
         );
 
-        match web_service_request.method {
-            Method::GET => {
-                request = client.get(&callable_url);
-            }
-            Method::POST => {
-                request = client
-                    .post(&callable_url)
-                    .body(web_service_request.get_body());
-            }
+        let request = match web_service_request.method {
+            Method::GET => client.get(&callable_url),
+            Method::POST => client
+                .post(&callable_url)
+                .body(web_service_request.get_body()),
             _ => {
                 log::error!("Unsupported Method");
                 return None;
             }
-        }
+        };
 
         let response = match request.send().await {
             Ok(r) => r,
             Err(err) => {
-                log::error!("Error - request failed. Err: {}", err);
+                log::error!(
+                    "Error - request failed. URL: {}, Err: {:?}, is_timeout: {}, is_connect: {}",
+                    callable_url,
+                    err,
+                    err.is_timeout(),
+                    err.is_connect()
+                );
                 return None;
             }
         };
@@ -248,7 +251,8 @@ where
             }
             reqwest::StatusCode::TOO_MANY_REQUESTS
             | reqwest::StatusCode::GATEWAY_TIMEOUT
-            | reqwest::StatusCode::BAD_GATEWAY => {
+            | reqwest::StatusCode::BAD_GATEWAY
+            | reqwest::StatusCode::CONFLICT => {
                 if attempt < MAX_RETRIES {
                     log::warn!(
                         "Err {} - retrying after {} ms (attempt {}/{})",
