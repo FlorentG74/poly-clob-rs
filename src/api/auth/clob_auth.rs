@@ -21,29 +21,29 @@ fn generate_values_hash(value: &DynSolValue) -> Vec<u8> {
 
     let tup = value.as_tuple().unwrap();
     for val in tup {
-        log::debug!("Value: {:?}", val);
+        log::trace!("Value: {:?}", val);
 
         let typ = val.as_type().unwrap();
 
-        log::debug!("Type: {}", typ.to_string());
+        log::trace!("Type: {}", typ.to_string());
         match typ.to_string().as_str() {
             "string" => {
                 let str = val.as_str().unwrap();
                 let encoded_str = keccak256(str);
-                log::debug!("Result: {encoded_str}");
+                log::trace!("Result: {encoded_str}");
                 encoded_values.extend_from_slice(encoded_str.as_slice());
             }
             "uint8" => {
                 let uint8 = val.as_uint().unwrap();
                 let x: [u8; 32] = uint8.0.to_be_bytes();
                 let encoded_uint8: [u8; 32] = U256::from_be_slice(&x).to_be_bytes();
-                log::debug!("Result: {:?}", &encoded_uint8);
+                log::trace!("Result: {:?}", &encoded_uint8);
                 encoded_values.extend_from_slice(&encoded_uint8);
             }
             "uint256" => {
                 let uint256 = val.as_uint().unwrap();
                 let x: [u8; 32] = uint256.0.to_be_bytes();
-                log::debug!("Result: {:?}", x);
+                log::trace!("Result: {:?}", x);
                 encoded_values.extend_from_slice(&x);
             }
             "address" => {
@@ -52,7 +52,7 @@ fn generate_values_hash(value: &DynSolValue) -> Vec<u8> {
 
                 let encoded_address: [u8; 32] = U256::from_be_slice(address_slice).to_be_bytes();
 
-                log::debug!("Result: {:?}", encoded_address);
+                log::trace!("Result: {:?}", encoded_address);
                 encoded_values.extend_from_slice(&encoded_address);
             }
             _ => panic!("Unknown Type"),
@@ -91,14 +91,14 @@ pub fn build_l1_signature(eip712_struct: &dyn EIP712Struct, salt: &str, nonce: i
     .concat();
     let eip712_hash = keccak256(&signable_bytes);
 
-    log::debug!("Signable bytes: {:?}", &signable_bytes);
-    log::debug!("Message hash: {:?}", &eip712_hash);
+    log::trace!("Signable bytes: {:?}", &signable_bytes);
+    log::trace!("Message hash: {:?}", &eip712_hash);
 
     let wallet = PrivateKeySigner::from_str(signer_pk).unwrap();
-    log::debug!("\nSigner address: {}", wallet.address());
+    log::trace!("\nSigner address: {}", wallet.address());
 
     let signature = block_on(wallet.sign_hash(&eip712_hash)).unwrap();
-    log::debug!("Signature: 0x{}", hex::encode(signature.as_bytes()));
+    log::trace!("Signature: 0x{}", hex::encode(signature.as_bytes()));
 
     let mut result = "0x".to_string();
     result.push_str(hex::encode(signature.as_bytes()).as_str());
