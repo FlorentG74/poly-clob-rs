@@ -75,7 +75,7 @@ pub async fn place_limit_order(
     let expiration: i64 = 0;
     let fee_rate_bps = 0;
 
-    let mut order = Order::new(
+    let order = Order::new(
         signer.poly_address.as_str(),
         signer.pub_key.as_str(),
         &get_zero_address(),
@@ -89,8 +89,10 @@ pub async fn place_limit_order(
     );
 
     let salt = get_timestamp();
+    let nonce = 0; // Nonce for order signing
     let body = order.build_order_query_body(
         salt.as_str(),
+        nonce,
         signer.api_key.as_str(),
         signer.private_key.as_str(),
     );

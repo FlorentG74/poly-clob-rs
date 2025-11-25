@@ -1,6 +1,6 @@
 use crate::api::auth::{build_l1_signature, EIP712Struct};
 use crate::models::{OrderType, Side};
-use string_builder::Builder;
+use serde::Serialize;
 
 use alloy::{
     dyn_abi::{DynSolType, DynSolValue},
@@ -20,6 +20,65 @@ const VERIFYING_CONTRACT: Address = address!("4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8
 // Neg Risk markets
 //const VERIFYING_CONTRACT: Address = address!("C5d563A36AE78145C45a50134d48A1215220f80a");
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OrderQueryBody<'a> {
+    order: SignedOrderRequest<'a>,
+    owner: &'a str,
+    #[serde(rename = "orderType")]
+    order_type: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SignedOrderRequest<'a> {
+    #[serde(serialize_with = "serialize_as_number")]
+    salt: &'a str,
+    maker: &'a str,
+    signer: &'a str,
+    taker: &'a str,
+    #[serde(rename = "tokenId")]
+    token_id: &'a str,
+    #[serde(serialize_with = "serialize_i32_as_string")]
+    maker_amount: i32,
+    #[serde(serialize_with = "serialize_i32_as_string")]
+    taker_amount: i32,
+    #[serde(serialize_with = "serialize_i64_as_string")]
+    expiration: i64,
+    #[serde(serialize_with = "serialize_i32_as_string")]
+    nonce: i32,
+    #[serde(rename = "feeRateBps", serialize_with = "serialize_i32_as_string")]
+    fee_rate_bps: i32,
+    side: String,
+    signature_type: i32,
+    signature: String,
+}
+
+fn serialize_as_number<S>(value: &str, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    use serde::ser::Error;
+    value
+        .parse::<u64>()
+        .map_err(S::Error::custom)?
+        .serialize(serializer)
+}
+
+fn serialize_i32_as_string<S>(value: &i32, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(&value.to_string())
+}
+
+fn serialize_i64_as_string<S>(value: &i64, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(&value.to_string())
+}
+
 pub struct Order {
     pub maker: String,
     pub signer: String,
@@ -28,12 +87,10 @@ pub struct Order {
     pub maker_amount: i32,
     pub taker_amount: i32,
     pub expiration: i64,
-    pub nonce: i32,
     pub fee_rate_bps: i32,
     pub side: Side,
     pub signature_type: i32,
     pub order_type: OrderType,
-    signature: String,
 }
 
 impl Order {
@@ -58,59 +115,40 @@ impl Order {
             taker_amount,
             expiration,
             fee_rate_bps,
-            nonce: 0,
             side,
             signature_type: 1, // Polymarket linked wallet
             order_type,
-            signature: "".to_string(),
         }
     }
 
-    pub fn build_order_query_body(&mut self, salt: &str, api_key: &str, pk: &str) -> String {
-        let mut builder = Builder::default();
+    pub fn build_order_query_body(&self, salt: &str, nonce: i32, api_key: &str, pk: &str) -> String {
+        let signature = build_l1_signature(self, salt, nonce, pk).to_string();
 
-        self.signature = build_l1_signature(self, salt, pk).to_string();
+        log::debug!("Signature added to msg: {}", signature);
 
-        let buy_sell = self.side.to_string();
+        let signed_order = SignedOrderRequest {
+            salt,
+            maker: &self.maker,
+            signer: &self.signer,
+            taker: &self.taker,
+            token_id: &self.token_id,
+            maker_amount: self.maker_amount,
+            taker_amount: self.taker_amount,
+            expiration: self.expiration,
+            nonce,
+            fee_rate_bps: self.fee_rate_bps,
+            side: self.side.to_string(),
+            signature_type: self.signature_type,
+            signature,
+        };
 
-        log::debug!("Signature added to msg: {}", self.signature);
+        let body = OrderQueryBody {
+            order: signed_order,
+            owner: api_key,
+            order_type: self.order_type.to_string(),
+        };
 
-        builder.append("{\"order\": {");
-        builder.append("\"salt\": ");
-        builder.append(salt);
-        builder.append(",\"maker\": \"");
-        builder.append(self.maker.clone());
-        builder.append("\",\"signer\": \"");
-        builder.append(self.signer.clone());
-        builder.append("\",\"taker\": \"");
-        builder.append(self.taker.clone());
-        builder.append("\",\"tokenId\": \"");
-        builder.append(self.token_id.clone());
-        builder.append("\",\"makerAmount\": \"");
-        builder.append(self.maker_amount.to_string());
-        builder.append("\",\"takerAmount\": \"");
-        builder.append(self.taker_amount.to_string());
-        builder.append("\",\"expiration\": \"");
-        builder.append(self.expiration.to_string());
-        builder.append("\",\"nonce\": \"");
-        builder.append(self.nonce.to_string());
-        builder.append("\",\"feeRateBps\": \"");
-        builder.append(self.fee_rate_bps.to_string());
-        builder.append("\",\"side\": \"");
-        builder.append(buy_sell); // 0 vs 1
-        builder.append("\",\"signatureType\": ");
-        builder.append(self.signature_type.to_string());
-        builder.append(",\"signature\": \"");
-        builder.append(self.signature.clone());
-        builder.append("\"},");
-        builder.append("");
-        builder.append("\"owner\": \"");
-        builder.append(api_key);
-        builder.append("\",\"orderType\": \"");
-        builder.append(self.order_type.to_string());
-        builder.append("\"}");
-
-        builder.string().expect("Error in String conversion")
+        serde_json::to_string(&body).expect("Error serializing order query body")
     }
 }
 
@@ -142,7 +180,7 @@ impl EIP712Struct for Order {
         keccak256("Order(uint256 salt,address maker,address signer,address taker,uint256 tokenId,uint256 makerAmount,uint256 takerAmount,uint256 expiration,uint256 nonce,uint256 feeRateBps,uint8 side,uint8 signatureType)")
     }
 
-    fn get_message_values(&self, salt: &str) -> DynSolValue {
+    fn get_message_values(&self, salt: &str, nonce: i32) -> DynSolValue {
         // Message type (Order structure)
         let _message_type = DynSolType::Tuple(vec![
             DynSolType::Uint(256),
@@ -169,7 +207,7 @@ impl EIP712Struct for Order {
             DynSolValue::Uint(U256::from(self.maker_amount), 256),
             DynSolValue::Uint(U256::from(self.taker_amount), 256),
             DynSolValue::Uint(U256::from(self.expiration), 256),
-            DynSolValue::Uint(U256::from(self.nonce), 256),
+            DynSolValue::Uint(U256::from(nonce), 256),
             DynSolValue::Uint(U256::from(self.fee_rate_bps), 256),
             DynSolValue::Uint(U256::from(self.side.to_int()), 8),
             DynSolValue::Uint(U256::from(self.signature_type), 8),
@@ -210,11 +248,9 @@ mod tests {
         assert_eq!(order.taker_amount, 50);
         assert_eq!(order.expiration, 9999999999);
         assert_eq!(order.fee_rate_bps, 10);
-        assert_eq!(order.nonce, 0);
         assert_eq!(order.side, Side::Buy);
         assert_eq!(order.signature_type, 1);
         assert_eq!(order.order_type, OrderType::FOK);
-        assert_eq!(order.signature, "");
     }
 
     #[test]
@@ -282,7 +318,7 @@ mod tests {
 
     #[test]
     fn test_build_order_query_body_structure() {
-        let mut order = Order::new(
+        let order = Order::new(
             TEST_MAKER,
             TEST_MAKER,
             TEST_TAKER,
@@ -295,13 +331,14 @@ mod tests {
             OrderType::FOK,
         );
 
-        let expected_body = r#"{"order": {"salt": 123456789,"maker": "0x1234567890123456789012345678901234567890","signer": "0x1234567890123456789012345678901234567890","taker": "0x0000000000000000000000000000000000000000","tokenId": "9791340778034406846471990250402404386251253109836550662455900621767083631393","makerAmount": "100","takerAmount": "50","expiration": "9999999999","nonce": "0","feeRateBps": "10","side": "BUY","signatureType": 1,"signature": "0x513f7e9ebe22fc80d12446263dc6c89404932a7668aa7c4d54d2d1074d63ef1c31259122bf8c6490dac0a3c1fb7dfcf3285d6fe1d8179cc0a8384b33288787371b"},"owner": "test_api_key","orderType": "FOK"}"#;
+        let expected_body = r#"{"order":{"salt":123456789,"maker":"0x1234567890123456789012345678901234567890","signer":"0x1234567890123456789012345678901234567890","taker":"0x0000000000000000000000000000000000000000","tokenId":"9791340778034406846471990250402404386251253109836550662455900621767083631393","makerAmount":"100","takerAmount":"50","expiration":"9999999999","nonce":"0","feeRateBps":"10","side":"BUY","signatureType":1,"signature":"0x513f7e9ebe22fc80d12446263dc6c89404932a7668aa7c4d54d2d1074d63ef1c31259122bf8c6490dac0a3c1fb7dfcf3285d6fe1d8179cc0a8384b33288787371b"},"owner":"test_api_key","orderType":"FOK"}"#;
 
         let salt = "123456789";
+        let nonce = 0;
         let api_key = "test_api_key";
         let pk = "0x1234567890123456789012345678901234567890123456789012345678901234";
 
-        let body = order.build_order_query_body(salt, api_key, pk);
+        let body = order.build_order_query_body(salt, nonce, api_key, pk);
 
         // Verify the body is as expected
         assert!(expected_body.eq(&body));
@@ -309,7 +346,7 @@ mod tests {
 
     #[test]
     fn test_build_order_query_body_order_type_fok() {
-        let mut order = Order::new(
+        let order = Order::new(
             TEST_MAKER,
             TEST_MAKER,
             TEST_TAKER,
@@ -324,15 +361,16 @@ mod tests {
 
         let body = order.build_order_query_body(
             "123",
+            0,
             "key",
             "0x1234567890123456789012345678901234567890123456789012345678901234",
         );
-        assert!(body.contains("\"orderType\": \"FOK\""));
+        assert!(body.contains("\"orderType\":\"FOK\""));
     }
 
     #[test]
     fn test_build_order_query_body_order_type_fak() {
-        let mut order = Order::new(
+        let order = Order::new(
             TEST_MAKER,
             TEST_MAKER,
             TEST_TAKER,
@@ -347,15 +385,16 @@ mod tests {
 
         let body = order.build_order_query_body(
             "123",
+            0,
             "key",
             "0x1234567890123456789012345678901234567890123456789012345678901234",
         );
-        assert!(body.contains("\"orderType\": \"FAK\""));
+        assert!(body.contains("\"orderType\":\"FAK\""));
     }
 
     #[test]
     fn test_build_order_query_body_order_type_gtc() {
-        let mut order = Order::new(
+        let order = Order::new(
             TEST_MAKER,
             TEST_MAKER,
             TEST_TAKER,
@@ -370,15 +409,16 @@ mod tests {
 
         let body = order.build_order_query_body(
             "123",
+            0,
             "key",
             "0x1234567890123456789012345678901234567890123456789012345678901234",
         );
-        assert!(body.contains("\"orderType\": \"GTC\""));
+        assert!(body.contains("\"orderType\":\"GTC\""));
     }
 
     #[test]
     fn test_build_order_query_body_order_type_gtd() {
-        let mut order = Order::new(
+        let order = Order::new(
             TEST_MAKER,
             TEST_MAKER,
             TEST_TAKER,
@@ -393,15 +433,16 @@ mod tests {
 
         let body = order.build_order_query_body(
             "123",
+            0,
             "key",
             "0x1234567890123456789012345678901234567890123456789012345678901234",
         );
-        assert!(body.contains("\"orderType\": \"GTD\""));
+        assert!(body.contains("\"orderType\":\"GTD\""));
     }
 
     #[test]
     fn test_build_order_query_body_buy_side() {
-        let mut order = Order::new(
+        let order = Order::new(
             TEST_MAKER,
             TEST_MAKER,
             TEST_TAKER,
@@ -416,15 +457,16 @@ mod tests {
 
         let body = order.build_order_query_body(
             "123",
+            0,
             "key",
             "0x1234567890123456789012345678901234567890123456789012345678901234",
         );
-        assert!(body.contains("\"side\": \"BUY\""));
+        assert!(body.contains("\"side\":\"BUY\""));
     }
 
     #[test]
     fn test_build_order_query_body_sell_side() {
-        let mut order = Order::new(
+        let order = Order::new(
             TEST_MAKER,
             TEST_MAKER,
             TEST_TAKER,
@@ -439,15 +481,16 @@ mod tests {
 
         let body = order.build_order_query_body(
             "123",
+            0,
             "key",
             "0x1234567890123456789012345678901234567890123456789012345678901234",
         );
-        assert!(body.contains("\"side\": \"SELL\""));
+        assert!(body.contains("\"side\":\"SELL\""));
     }
 
     #[test]
     fn test_build_order_query_body_contains_signature() {
-        let mut order = Order::new(
+        let order = Order::new(
             TEST_MAKER,
             TEST_MAKER,
             TEST_TAKER,
@@ -462,18 +505,18 @@ mod tests {
 
         let body = order.build_order_query_body(
             "123",
+            0,
             "key",
             "0x1234567890123456789012345678901234567890123456789012345678901234",
         );
 
-        // Signature should be populated after building the body
-        assert!(order.signature.len() > 0);
-        assert!(body.contains(&format!("\"signature\": \"{}\"", order.signature)));
+        // Signature should be present in the body
+        assert!(body.contains("\"signature\":\"0x"));
     }
 
     #[test]
     fn test_build_order_query_body_includes_api_key() {
-        let mut order = Order::new(
+        let order = Order::new(
             TEST_MAKER,
             TEST_MAKER,
             TEST_TAKER,
@@ -489,16 +532,17 @@ mod tests {
         let api_key = "my_test_api_key_12345";
         let body = order.build_order_query_body(
             "123",
+            0,
             api_key,
             "0x1234567890123456789012345678901234567890123456789012345678901234",
         );
 
-        assert!(body.contains(&format!("\"owner\": \"{}\"", api_key)));
+        assert!(body.contains(&format!("\"owner\":\"{}\"", api_key)));
     }
 
     #[test]
     fn test_build_order_query_body_includes_salt() {
-        let mut order = Order::new(
+        let order = Order::new(
             TEST_MAKER,
             TEST_MAKER,
             TEST_TAKER,
@@ -514,10 +558,11 @@ mod tests {
         let salt = "987654321";
         let body = order.build_order_query_body(
             salt,
+            0,
             "key",
             "0x1234567890123456789012345678901234567890123456789012345678901234",
         );
 
-        assert!(body.contains(&format!("\"salt\": {}", salt)));
+        assert!(body.contains(&format!("\"salt\":{}", salt)));
     }
 }

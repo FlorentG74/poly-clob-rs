@@ -55,7 +55,7 @@ impl EIP712Struct for L1Header {
         keccak256("Order(address address,string timestamp,uint256 nonce,string message)")
     }
 
-    fn get_message_values(&self, salt: &str) -> DynSolValue {
+    fn get_message_values(&self, salt: &str, _nonce: i32) -> DynSolValue {
         let _message_type = DynSolType::Tuple(vec![
             DynSolType::Address,
             DynSolType::String,
