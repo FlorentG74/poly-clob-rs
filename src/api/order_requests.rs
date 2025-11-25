@@ -24,25 +24,57 @@ use super::clob_endpoints::{CLOB_API, POST_ORDER};
 /// * `size` - The size of the order in USDC
 /// * `side` - Whether this is a buy or sell order
 /// * `token_id` - The token ID for the outcome
+/// * `order_type` - The type of order (FOK, FAK, GTC, or GTD)
+/// * `expiration` - Order expiration timestamp (required for GTD, must be 0 for others)
+///
+/// # Order Types
+///
+/// * `FOK` (Fill-Or-Kill) - Must be executed immediately in full or cancelled. Expiration must be 0.
+/// * `FAK` (Fill-And-Kill) - Execute immediately for available shares, cancel the rest. Expiration must be 0.
+/// * `GTC` (Good-Til-Cancelled) - Active until fulfilled or manually cancelled. Expiration must be 0.
+/// * `GTD` (Good-Til-Date) - Active until specified date. Expiration must be non-zero Unix timestamp.
 ///
 /// # Returns
 ///
 /// Returns `Ok(String)` with the API response on success, or `Err(String)` with an error message on failure.
 ///
+/// # Errors
+///
+/// Returns an error if:
+/// * Expiration is non-zero for FOK/FAK/GTC orders
+/// * Expiration is zero for GTD orders
+///
 /// # Example
 ///
 /// ```no_run
-/// use poly_clob_rs::{Account, Side, api::order_requests::place_limit_order};
+/// use poly_clob_rs::{Account, Side, OrderType, api::order_requests::place_limit_order};
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let account = Account::actual_account_from_env();
+///
+/// // FOK order (expiration must be 0)
 /// let result = place_limit_order(
 ///     &account,
 ///     0.52,
 ///     10.0,
 ///     Side::Buy,
-///     "1234567890"
+///     "1234567890",
+///     OrderType::FOK,
+///     0
 /// ).await?;
+///
+/// // GTD order (expiration must be non-zero)
+/// let expiration_time = 1735689600; // Some future timestamp
+/// let result = place_limit_order(
+///     &account,
+///     0.52,
+///     10.0,
+///     Side::Buy,
+///     "1234567890",
+///     OrderType::GTD,
+///     expiration_time
+/// ).await?;
+///
 /// println!("Order placed: {}", result);
 /// # Ok(())
 /// # }
@@ -53,7 +85,26 @@ pub async fn place_limit_order(
     size: f64,
     side: Side,
     token_id: &str,
+    order_type: OrderType,
+    expiration: i64,
 ) -> Result<String, String> {
+    // Validate expiration based on order type
+    match order_type {
+        OrderType::GTD => {
+            if expiration == 0 {
+                return Err("GTD orders require a non-zero expiration timestamp".to_string());
+            }
+        }
+        OrderType::FOK | OrderType::FAK | OrderType::GTC => {
+            if expiration != 0 {
+                return Err(format!(
+                    "{} orders must have expiration set to 0",
+                    order_type
+                ));
+            }
+        }
+    }
+
     let client = reqwest::Client::builder()
         .build()
         .map_err(|e| format!("Error creating HTTP client: {}", e))?;
@@ -72,7 +123,6 @@ pub async fn place_limit_order(
         ((10000.0 * size * price).round() * 100.0).round() as i32
     };
 
-    let expiration: i64 = 0;
     let fee_rate_bps = 0;
 
     let order = Order::new(
@@ -85,7 +135,7 @@ pub async fn place_limit_order(
         expiration,
         fee_rate_bps,
         side,
-        OrderType::FOK,
+        order_type,
     );
 
     let salt = get_timestamp();
