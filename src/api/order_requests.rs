@@ -21,7 +21,7 @@ use super::clob_endpoints::{CLOB_API, POST_ORDER};
 ///
 /// * `signer` - The account to sign and place the order with
 /// * `price` - The price per share (0.0 to 1.0)
-/// * `size` - The size of the order in USDC
+/// * `size` - The size of the order in token quantity (number of shares)
 /// * `side` - Whether this is a buy or sell order
 /// * `token_id` - The token ID for the outcome
 /// * `order_type` - The type of order (FOK, FAK, GTC, or GTD)
@@ -114,13 +114,28 @@ pub async fn place_limit_order(
 
     let callable_url = format!("{}{}", CLOB_API, request_path);
 
-    // Note: maker amount supports a max accuracy of 2 decimals, taker amount a max of 4 decimals
-    let maker_amount = ((100.0 * size).round() * 10000.0).round() as i32;
+    // Polymarket API precision requirements:
+    // - For BUY orders: maker_amount (USDC) max 4 decimals, taker_amount (tokens) max 2 decimals
+    // - For SELL orders: maker_amount (tokens) max 2 decimals, taker_amount (USDC) max 4 decimals
+    // USDC precision: 4 decimals (10^4 = 10000), Token precision: 2 decimals (10^2 = 100)
+    // Both are converted to raw units (10^6) for the API
+    //
+    // Note: size parameter represents token quantity (number of shares) for both BUY and SELL
 
-    let taker_amount = if side == Side::Buy {
-        ((10000.0 * size / price).round() * 100.0).round() as i32
+    let (maker_amount, taker_amount) = if side == Side::Buy {
+        // BUY: giving USDC (maker), receiving tokens (taker)
+        // maker_amount = size × price (USDC with 4 decimal precision)
+        // taker_amount = size (tokens with 2 decimal precision)
+        let maker_amount = ((10000.0 * size * price).round() * 100.0).round() as i32;
+        let taker_amount = ((100.0 * size).round() * 10000.0).round() as i32;
+        (maker_amount, taker_amount)
     } else {
-        ((10000.0 * size * price).round() * 100.0).round() as i32
+        // SELL: giving tokens (maker), receiving USDC (taker)
+        // maker_amount = size (tokens with 2 decimal precision)
+        // taker_amount = size × price (USDC with 4 decimal precision)
+        let maker_amount = ((100.0 * size).round() * 10000.0).round() as i32;
+        let taker_amount = ((10000.0 * size * price).round() * 100.0).round() as i32;
+        (maker_amount, taker_amount)
     };
 
     let fee_rate_bps = 0;
@@ -149,7 +164,7 @@ pub async fn place_limit_order(
 
     let l2_headers = build_l2_headers(&signer, method, request_path, &body, &salt);
 
-    log::trace!("Signed Order body: {}", &body);
+    log::debug!("Signed Order body: {}", &body);
 
     let response = client
         .post(&callable_url)
