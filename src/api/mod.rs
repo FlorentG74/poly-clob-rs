@@ -36,6 +36,7 @@ pub mod order_requests;
 pub mod position_requests;
 pub mod price_requests;
 pub mod request;
+pub mod response_handler;
 pub mod tag_requests;
 pub mod webservice;
 

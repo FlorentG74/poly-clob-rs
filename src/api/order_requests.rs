@@ -3,11 +3,12 @@
 //! This module provides functions for placing and managing orders on the Polymarket CLOB.
 
 use crate::api::auth::{build_l2_headers, get_timestamp, get_zero_address};
-use crate::models::{Account, Order, OrderType, Side};
+use crate::api::response_handler::handle_api_response;
+use crate::models::{Account, AssetType, Order, OrderType, Side};
 use crate::{market_requests, webservice, MarketOrders, OpenOrder, ORDERS};
 use reqwest::header::*;
 
-use super::clob_endpoints::{CLOB_API, POST_ORDER};
+use super::clob_endpoints::{CLOB_API, GET_API_KEYS, GET_BALANCE_ALLOWANCE, POST_ORDER};
 
 // Note: The following imports are commented out until the related functions are fully implemented
 // use crate::OpenOrder;
@@ -178,50 +179,108 @@ pub async fn place_limit_order(
 
     log::trace!("API Call Raw Response: {:?}", response);
 
-    match response.status() {
-        reqwest::StatusCode::OK => {
-            let text = response
-                .text()
-                .await
-                .map_err(|e| format!("Failed to read response: {}", e))?;
-
-            log::debug!("Post Order response: {}", text);
-
-            Ok(text)
-        }
-        reqwest::StatusCode::BAD_REQUEST => {
-            log::error!(
-                "Error encountered while posting the order: {}",
-                order.side.to_lowercase_str()
-            );
-            let error_text = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
-            log::error!("API Response: {:?}", error_text);
-            Err(format!("Bad request: {}", error_text))
-        }
-        reqwest::StatusCode::TOO_MANY_REQUESTS => {
-            log::error!("Rate limit reached for request {}", callable_url);
-            Err("Rate limit reached".to_string())
-        }
-        reqwest::StatusCode::UNAUTHORIZED => {
-            log::error!("Authentication failed for request {}", callable_url);
-            Err("Authentication failed".to_string())
-        }
-        other => {
-            log::error!(
-                "Unexpected error in service call: {:?}; url: {}",
-                other,
-                callable_url
-            );
-            Err(format!("Unexpected error: {:?}", other))
-        }
+    // Log order side for debugging
+    if !response.status().is_success() {
+        log::error!(
+            "Error encountered while posting {} order",
+            order.side.to_lowercase_str()
+        );
     }
+
+    handle_api_response(response, &callable_url).await
 }
 
 pub async fn get_all_open_orders(signer: &Account) -> Vec<OpenOrder> {
     get_open_orders_by_market(signer, "").await
+}
+
+/// Get balance and allowance for an account.
+///
+/// # Arguments
+///
+/// * `signer` - The account to query
+/// * `asset_type` - The type of asset (e.g., COLLATERAL)
+/// * `token_id` - The token ID to check
+/// * `signature_type` - Optional signature type (-1 to omit)
+///
+/// # Returns
+///
+/// Returns `Ok(String)` with the API response on success, or `Err(String)` on failure.
+pub async fn get_balance_allowance(
+    signer: &Account,
+    asset_type: AssetType,
+    token_id: &str,
+    signature_type: i32,
+) -> Result<String, String> {
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|e| format!("Error creating HTTP client: {}", e))?;
+
+    let method = "GET";
+    let request_path = GET_BALANCE_ALLOWANCE;
+    let body = "";
+
+    let mut callable_url = format!("{}{}", CLOB_API, request_path);
+    webservice::add_param_to_url(&mut callable_url, "asset_type", asset_type.into());
+    webservice::add_param_to_url(&mut callable_url, "token_id", token_id);
+
+    if signature_type != -1 {
+        let signature_str = format!("{}", signature_type);
+        webservice::add_param_to_url(&mut callable_url, "signature_type", signature_str.as_str());
+    }
+
+    let l2_headers = build_l2_headers(signer, method, request_path, body, "");
+
+    let response = client
+        .get(&callable_url)
+        .header(CONTENT_TYPE, "application/json")
+        .header(ACCEPT, "application/json")
+        .headers(l2_headers)
+        .send()
+        .await
+        .map_err(|e| format!("HTTP request failed: {}", e))?;
+
+    handle_api_response(response, &callable_url).await
+}
+
+/// Get API keys for an account.
+///
+/// # Arguments
+///
+/// * `signer` - The account to query
+/// * `signature_type` - Optional signature type (-1 to omit)
+///
+/// # Returns
+///
+/// Returns `Ok(String)` with the API response on success, or `Err(String)` on failure.
+pub async fn get_api_key(signer: &Account, signature_type: i32) -> Result<String, String> {
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|e| format!("Error creating HTTP client: {}", e))?;
+
+    let method = "GET";
+    let request_path = GET_API_KEYS;
+    let body = "";
+
+    let mut callable_url = format!("{}{}", CLOB_API, request_path);
+
+    if signature_type != -1 {
+        let signature_str = format!("{}", signature_type);
+        webservice::add_param_to_url(&mut callable_url, "signature_type", signature_str.as_str());
+    }
+
+    let l2_headers = build_l2_headers(signer, method, request_path, body, "");
+
+    let response = client
+        .get(&callable_url)
+        .header(CONTENT_TYPE, "application/json")
+        .header(ACCEPT, "application/json")
+        .headers(l2_headers)
+        .send()
+        .await
+        .map_err(|e| format!("HTTP request failed: {}", e))?;
+
+    handle_api_response(response, &callable_url).await
 }
 
 pub async fn get_open_orders_by_market(signer: &Account, market_id: &str) -> Vec<OpenOrder> {
