@@ -55,6 +55,19 @@ impl Account {
     }
 
     pub fn paper_account(account_name: &str) -> Self {
+        use dotenv::dotenv;
+        use std::env;
+
+        dotenv().ok();
+
+        let telegram_chat_id = match env::var("TELEGRAM_CHAT_ID") {
+            Ok(val) => match val.parse::<i64>() {
+                Ok(chat_id) if chat_id != 0 => Some(chat_id),
+                _ => None,
+            },
+            Err(_) => None,
+        };
+
         Account {
             poly_address: account_name.to_string(),
             pub_key: Default::default(),
@@ -63,7 +76,7 @@ impl Account {
             api_secret: Default::default(),
             api_passphrase: Default::default(),
             account_type: AccountType::PaperAccount,
-            telegram_chat_id: None,
+            telegram_chat_id: telegram_chat_id,
             telegram_bot_token: None,
         }
     }
