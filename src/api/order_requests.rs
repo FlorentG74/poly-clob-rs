@@ -51,7 +51,7 @@ use super::clob_endpoints::{CLOB_API, GET_API_KEYS, GET_BALANCE_ALLOWANCE, POST_
 /// use poly_clob_rs::{Account, Side, OrderType, api::order_requests::place_limit_order};
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let account = Account::actual_account_from_env();
+/// let account = Account::load_poly_account();
 ///
 /// // FOK order (expiration must be 0)
 /// let result = place_limit_order(

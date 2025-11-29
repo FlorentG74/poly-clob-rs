@@ -33,7 +33,7 @@
 //! ```rust,no_run
 //! use poly_clob_rs::{Account, Order, Side, OrderType};
 //!
-//! let account = Account::actual_account_from_env();
+//! let account = Account::load_poly_account();
 //! let order = Order::new(
 //!     &account.poly_address,
 //!     &account.poly_address,

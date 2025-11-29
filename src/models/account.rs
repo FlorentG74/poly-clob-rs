@@ -21,7 +21,7 @@ pub struct Account {
 }
 
 impl Account {
-    pub fn actual_account_from_env() -> Self {
+    pub fn load_poly_account() -> Self {
         use dotenv::dotenv;
         use std::env;
 
@@ -54,7 +54,7 @@ impl Account {
         }
     }
 
-    pub fn paper_account(account_name: &str) -> Self {
+    pub fn load_paper_account(account_name: &str) -> Self {
         use dotenv::dotenv;
         use std::env;
 
@@ -84,6 +84,6 @@ impl Account {
 
 impl Default for Account {
     fn default() -> Self {
-        Self::actual_account_from_env()
+        Self::load_poly_account()
     }
 }

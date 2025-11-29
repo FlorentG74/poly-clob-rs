@@ -83,7 +83,7 @@ use poly_clob_rs::{Account, Order, Side, OrderType};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load account credentials from environment
-    let account = Account::actual_account_from_env();
+    let account = Account::load_poly_account();
 
     // Create an order
     let mut order = Order::new(
