@@ -68,6 +68,11 @@ impl Account {
             Err(_) => None,
         };
 
+        let telegram_bot_token = match env::var("TELEGRAM_BOT_TOKEN") {
+            Ok(val) => Some(val),
+            Err(_) => None,
+        };
+
         Account {
             poly_address: account_name.to_string(),
             pub_key: Default::default(),
@@ -77,7 +82,7 @@ impl Account {
             api_passphrase: Default::default(),
             account_type: AccountType::PaperAccount,
             telegram_chat_id,
-            telegram_bot_token: None,
+            telegram_bot_token: telegram_bot_token
         }
     }
 }
