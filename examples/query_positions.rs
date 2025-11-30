@@ -12,9 +12,6 @@ use std::env;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize logging
-        log4rs::init_file("../config/log4rs-test.yaml", Default::default()).unwrap();
-
     // Get user address from command line argument or environment variable
     let user_address = env::args()
         .nth(1)

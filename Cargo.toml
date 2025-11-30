@@ -29,7 +29,6 @@ strum_macros = "0.26.4"
 alloy = { version = "0.5.4", features = ["dyn-abi", "signer-local"] }
 log = "0.4.22"
 diesel = { version = "2.2.5", features = ["postgres"], optional = true }
-log4rs = "1.4.0"
 
 [features]
 default = []
