@@ -11,7 +11,6 @@ use poly_clob_rs::{PolymarketPricesResponse, WebserviceRequest};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-
     // Example token IDs (replace with actual token IDs from markets)
     let token_ids = vec![
         "52114319501245915516055106046884209969926127482827954674443846427813813942700".to_string(),

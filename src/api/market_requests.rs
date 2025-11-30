@@ -106,9 +106,12 @@ pub async fn load_markets_by_condition_ids(
     let mut web_service_request = WebserviceRequest::new_markets_ws_request();
     web_service_request.with_condition_ids(condition_ids);
 
-    let (_, result) =
-        WebserviceRequest::fetch_batch::<MarketsResponse>(&client, &web_service_request, next_offset)
-            .await;
+    let (_, result) = WebserviceRequest::fetch_batch::<MarketsResponse>(
+        &client,
+        &web_service_request,
+        next_offset,
+    )
+    .await;
 
     result
 }

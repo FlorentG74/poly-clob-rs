@@ -72,7 +72,12 @@ fn get_encoded_domain(eip712_struct: &dyn EIP712Struct) -> B256 {
     keccak256(encoded_domain_full_bytes)
 }
 
-pub fn build_l1_signature(eip712_struct: &dyn EIP712Struct, salt: &str, nonce: i32, signer_pk: &str) -> String {
+pub fn build_l1_signature(
+    eip712_struct: &dyn EIP712Struct,
+    salt: &str,
+    nonce: i32,
+    signer_pk: &str,
+) -> String {
     let encoded_domain = get_encoded_domain(eip712_struct);
 
     let message_value = eip712_struct.get_message_values(salt, nonce);

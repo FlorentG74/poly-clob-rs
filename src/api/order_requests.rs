@@ -5,7 +5,7 @@
 use crate::api::auth::{build_l2_headers, get_timestamp, get_zero_address};
 use crate::api::response_handler::handle_api_response;
 use crate::models::{Account, Order, OrderType, Side};
-use crate::{MarketOrders, ORDERS, OpenOrder, WebserviceRequest, market_requests};
+use crate::{market_requests, MarketOrders, OpenOrder, WebserviceRequest, ORDERS};
 use reqwest::header::*;
 
 use super::clob_endpoints::{CLOB_API, POST_ORDER};
