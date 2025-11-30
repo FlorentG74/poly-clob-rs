@@ -13,12 +13,11 @@ const NAME: &str = "Polymarket CTF Exchange";
 const VERSION: &str = "1";
 const CHAIN_ID: i32 = 137;
 
-// TODO make contract dynamic depending on market
 // Non-Neg Risk markets
-const VERIFYING_CONTRACT: Address = address!("4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E");
-
+const NON_NEG_RISK_VERIFYING_CONTRACT: Address =
+    address!("4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E");
 // Neg Risk markets
-//const VERIFYING_CONTRACT: Address = address!("C5d563A36AE78145C45a50134d48A1215220f80a");
+const NEG_RISK_VERIFYING_CONTRACT: Address = address!("C5d563A36AE78145C45a50134d48A1215220f80a");
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -89,6 +88,7 @@ pub struct Order {
     pub expiration: i64,
     pub fee_rate_bps: i32,
     pub side: Side,
+    pub neg_risk: bool,
     pub signature_type: i32,
     pub order_type: OrderType,
 }
@@ -104,6 +104,7 @@ impl Order {
         expiration: i64,
         fee_rate_bps: i32,
         side: Side,
+        neg_risk: bool,
         order_type: OrderType,
     ) -> Self {
         Order {
@@ -116,12 +117,19 @@ impl Order {
             expiration,
             fee_rate_bps,
             side,
+            neg_risk,
             signature_type: 1, // Polymarket linked wallet
             order_type,
         }
     }
 
-    pub fn build_order_query_body(&self, salt: &str, nonce: i32, api_key: &str, pk: &str) -> String {
+    pub fn build_order_query_body(
+        &self,
+        salt: &str,
+        nonce: i32,
+        api_key: &str,
+        pk: &str,
+    ) -> String {
         let signature = build_l1_signature(self, salt, nonce, pk).to_string();
 
         log::debug!("Signature added to msg: {}", signature);
@@ -160,6 +168,12 @@ impl EIP712Struct for Order {
     }
 
     fn get_domain_values(&self) -> DynSolValue {
+        let verifying_contract = if self.neg_risk {
+            NEG_RISK_VERIFYING_CONTRACT
+        } else {
+            NON_NEG_RISK_VERIFYING_CONTRACT
+        };
+
         // EIP-712 domain
         let _domain_type = DynSolType::Tuple(vec![
             DynSolType::String,    // name
@@ -172,7 +186,7 @@ impl EIP712Struct for Order {
             DynSolValue::String(NAME.to_string()),
             DynSolValue::String(VERSION.to_string()),
             DynSolValue::Uint(U256::from(CHAIN_ID), 256),
-            DynSolValue::Address(VERIFYING_CONTRACT),
+            DynSolValue::Address(verifying_contract),
         ])
     }
 
@@ -237,6 +251,7 @@ mod tests {
             9999999999,
             10,
             Side::Buy,
+            false,
             OrderType::FOK,
         );
 
@@ -273,6 +288,7 @@ mod tests {
                 9999999999,
                 10,
                 Side::Buy,
+                false,
                 order_type,
             );
 
@@ -292,6 +308,7 @@ mod tests {
             9999999999,
             10,
             Side::Buy,
+            false,
             OrderType::GTC,
         );
 
@@ -310,6 +327,7 @@ mod tests {
             9999999999,
             10,
             Side::Sell,
+            false,
             OrderType::GTC,
         );
 
@@ -328,6 +346,7 @@ mod tests {
             9999999999,
             10,
             Side::Buy,
+            false,
             OrderType::FOK,
         );
 
@@ -356,6 +375,7 @@ mod tests {
             9999999999,
             10,
             Side::Buy,
+            false,
             OrderType::FOK,
         );
 
@@ -380,6 +400,7 @@ mod tests {
             9999999999,
             10,
             Side::Buy,
+            false,
             OrderType::FAK,
         );
 
@@ -404,6 +425,7 @@ mod tests {
             9999999999,
             10,
             Side::Buy,
+            false,
             OrderType::GTC,
         );
 
@@ -428,6 +450,7 @@ mod tests {
             9999999999,
             10,
             Side::Buy,
+            false,
             OrderType::GTD,
         );
 
@@ -452,6 +475,7 @@ mod tests {
             9999999999,
             10,
             Side::Buy,
+            false,
             OrderType::GTC,
         );
 
@@ -476,6 +500,7 @@ mod tests {
             9999999999,
             10,
             Side::Sell,
+            false,
             OrderType::GTC,
         );
 
@@ -500,6 +525,7 @@ mod tests {
             9999999999,
             10,
             Side::Buy,
+            false,
             OrderType::FOK,
         );
 
@@ -526,6 +552,7 @@ mod tests {
             9999999999,
             10,
             Side::Buy,
+            false,
             OrderType::FOK,
         );
 
@@ -552,6 +579,7 @@ mod tests {
             9999999999,
             10,
             Side::Buy,
+            false,
             OrderType::FOK,
         );
 

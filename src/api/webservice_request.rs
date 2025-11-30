@@ -71,7 +71,7 @@ impl WebserviceRequest {
     /// # Example
     ///
     /// ```rust,no_run
-    /// use poly_clob_rs::{WebserviceRequest, MarketsResponse, api::webservice::fetch_batch};
+    /// use poly_clob_rs::{WebserviceRequest, MarketsResponse};
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let client = reqwest::Client::new();

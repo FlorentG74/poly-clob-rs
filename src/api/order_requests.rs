@@ -71,6 +71,7 @@ use super::clob_endpoints::{CLOB_API, POST_ORDER};
 ///     0.52,
 ///     10.0,
 ///     Side::Buy,
+///     false,
 ///     "1234567890",
 ///     OrderType::GTD,
 ///     expiration_time
@@ -85,6 +86,7 @@ pub async fn place_limit_order(
     price: f64,
     size: f64,
     side: Side,
+    neg_risk: bool,
     token_id: &str,
     order_type: OrderType,
     expiration: i64,
@@ -151,6 +153,7 @@ pub async fn place_limit_order(
         expiration,
         fee_rate_bps,
         side,
+        neg_risk,
         order_type,
     );
 
