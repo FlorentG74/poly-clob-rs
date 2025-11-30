@@ -35,7 +35,7 @@ Consider the following dependency improvements:
 
 **Current dependencies that might not be needed for a library:**
 - `dotenv` - Used for loading environment variables (consider making optional)
-- `env_logger` - Used for logging (consider making optional)
+- `log4rs` - Used for logging (consider making optional)
 
 **Recommendation:** Create feature flags for optional dependencies:
 

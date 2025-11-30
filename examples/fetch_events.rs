@@ -12,7 +12,7 @@ use poly_clob_rs::{ApiResponse, EventResponse, WebserviceRequest};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logging
-    env_logger::init();
+        log4rs::init_file("../config/log4rs-test.yaml", Default::default()).unwrap();
 
     println!("Fetching events from Polymarket...\n");
 
