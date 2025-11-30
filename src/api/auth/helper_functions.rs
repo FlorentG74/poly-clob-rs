@@ -25,12 +25,12 @@ pub fn format_redis_ts(string_ts: &str) -> i64 {
 pub fn convert_string_to_nullable_time(input: Option<&String>) -> Option<DateTime<Utc>> {
     match input {
         Some(str_date) => {
-            return Some(
+            Some(
                 DateTime::parse_from_rfc3339(str_date.as_str())
                     .unwrap()
                     .into(),
-            );
+            )
         }
-        None => return None,
+        None => None,
     }
 }

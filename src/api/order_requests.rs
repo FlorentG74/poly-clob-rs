@@ -167,7 +167,7 @@ pub async fn place_limit_order(
         signer.private_key.as_str(),
     );
 
-    let l2_headers = build_l2_headers(&signer, method, request_path, &body, &salt);
+    let l2_headers = build_l2_headers(signer, method, request_path, &body, &salt);
 
     log::debug!("Signed Order body: {}", &body);
 

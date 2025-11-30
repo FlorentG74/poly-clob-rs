@@ -10,19 +10,19 @@ use std::fmt;
 /// # Variants
 ///
 /// * `FOK` - Fill-Or-Kill: A market order that must be executed immediately in its entirety;
-///           otherwise, the entire order will be cancelled. For buy orders, the amount is in dollars.
-///           For sell orders, the amount is in shares.
+///   otherwise, the entire order will be cancelled. For buy orders, the amount is in dollars.
+///   For sell orders, the amount is in shares.
 ///
 /// * `FAK` - Fill-And-Kill: A market order that will be executed immediately for as many shares
-///           as are available; any portion not filled at once is cancelled. For buy orders, the
-///           amount is in dollars. For sell orders, the amount is in shares.
+///   as are available; any portion not filled at once is cancelled. For buy orders, the
+///   amount is in dollars. For sell orders, the amount is in shares.
 ///
 /// * `GTC` - Good-Til-Cancelled: A limit order that is active until it is fulfilled or cancelled.
 ///
 /// * `GTD` - Good-Til-Date: A limit order that is active until its specified date (UTC seconds
-///           timestamp), unless it has already been fulfilled or cancelled. There is a security
-///           threshold of one minute. If the order needs to expire in 90 seconds, the correct
-///           expiration value is: now + 1 minute + 30 seconds.
+///   timestamp), unless it has already been fulfilled or cancelled. There is a security
+///   threshold of one minute. If the order needs to expire in 90 seconds, the correct
+///   expiration value is: now + 1 minute + 30 seconds.
 ///
 /// # Example
 ///

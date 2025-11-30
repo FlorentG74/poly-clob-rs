@@ -16,7 +16,6 @@ pub struct PolyResponseTag {
     #[serde(rename = "_sync")]
     pub sync: Option<bool>,
 }
-#[warn(dead_code)]
 
 // ApiResponse implementations
 impl ApiResponse for PolymarketTagsResponse {

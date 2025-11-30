@@ -76,7 +76,7 @@ impl Account {
             api_secret: Default::default(),
             api_passphrase: Default::default(),
             account_type: AccountType::PaperAccount,
-            telegram_chat_id: telegram_chat_id,
+            telegram_chat_id,
             telegram_bot_token: None,
         }
     }
