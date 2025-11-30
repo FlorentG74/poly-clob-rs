@@ -5,7 +5,7 @@ use string_builder::Builder;
 
 use crate::{MarketsResponse, PolyResponseMarket};
 
-use super::{webservice, WebserviceRequest, GAMMA_API, GET_MARKET, GET_MARKETS, WITH_SLUG};
+use super::{WebserviceRequest, GAMMA_API, GET_MARKET, GET_MARKETS, WITH_SLUG};
 
 impl WebserviceRequest {
     pub fn new_market_ws_request() -> Self {
@@ -107,7 +107,7 @@ pub async fn load_markets_by_condition_ids(
     web_service_request.with_condition_ids(condition_ids);
 
     let (_, result) =
-        webservice::fetch_batch::<MarketsResponse>(&client, &web_service_request, next_offset)
+        WebserviceRequest::fetch_batch::<MarketsResponse>(&client, &web_service_request, next_offset)
             .await;
 
     result
@@ -121,5 +121,5 @@ pub async fn fetch_market_by_slug(slug: &str) -> Option<PolyResponseMarket> {
     let mut web_service_request = WebserviceRequest::new_markets_ws_request();
     web_service_request.with_slug(slug);
 
-    webservice::fetch_one::<PolyResponseMarket>(&client, &web_service_request).await
+    WebserviceRequest::fetch_one::<PolyResponseMarket>(&client, &web_service_request).await
 }

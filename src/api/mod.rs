@@ -10,7 +10,7 @@
 //!
 //! - [`auth`] - Authentication helpers for L1 and L2 auth
 //! - [`clob_endpoints`] - API endpoint URL constants
-//! - [`request`] - Core request builder type
+//! - [`webservice_request`] - Core request builder type
 //! - [`event_requests`] - Event and event series request builders
 //! - [`market_requests`] - Market data request builders
 //! - [`order_requests`] - Order placement and management request builders
@@ -35,14 +35,12 @@ pub mod market_requests;
 pub mod order_requests;
 pub mod position_requests;
 pub mod price_requests;
-pub mod request;
+pub mod webservice_request;
 pub mod response_handler;
 pub mod tag_requests;
-pub mod webservice;
 
 pub use auth::*;
 pub use clob_endpoints::*;
 pub use market_requests::*;
 pub use order_requests::*;
-pub use request::*;
-pub use webservice::*;
+pub use webservice_request::*;

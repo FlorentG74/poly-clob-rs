@@ -5,7 +5,7 @@
 use crate::api::auth::{build_l2_headers, get_timestamp, get_zero_address};
 use crate::api::response_handler::handle_api_response;
 use crate::models::{Account, AssetType, Order, OrderType, Side};
-use crate::{market_requests, webservice, MarketOrders, OpenOrder, ORDERS};
+use crate::{MarketOrders, ORDERS, OpenOrder, WebserviceRequest, market_requests};
 use reqwest::header::*;
 
 use super::clob_endpoints::{CLOB_API, GET_API_KEYS, GET_BALANCE_ALLOWANCE, POST_ORDER};
@@ -221,12 +221,12 @@ pub async fn get_balance_allowance(
     let body = "";
 
     let mut callable_url = format!("{}{}", CLOB_API, request_path);
-    webservice::add_param_to_url(&mut callable_url, "asset_type", asset_type.into());
-    webservice::add_param_to_url(&mut callable_url, "token_id", token_id);
+    WebserviceRequest::add_param_to_url(&mut callable_url, "asset_type", asset_type.into());
+    WebserviceRequest::add_param_to_url(&mut callable_url, "token_id", token_id);
 
     if signature_type != -1 {
         let signature_str = format!("{}", signature_type);
-        webservice::add_param_to_url(&mut callable_url, "signature_type", signature_str.as_str());
+        WebserviceRequest::add_param_to_url(&mut callable_url, "signature_type", signature_str.as_str());
     }
 
     let l2_headers = build_l2_headers(signer, method, request_path, body, "");
@@ -266,7 +266,7 @@ pub async fn get_api_key(signer: &Account, signature_type: i32) -> Result<String
 
     if signature_type != -1 {
         let signature_str = format!("{}", signature_type);
-        webservice::add_param_to_url(&mut callable_url, "signature_type", signature_str.as_str());
+        WebserviceRequest::add_param_to_url(&mut callable_url, "signature_type", signature_str.as_str());
     }
 
     let l2_headers = build_l2_headers(signer, method, request_path, body, "");
@@ -294,7 +294,7 @@ pub async fn get_open_orders_by_market(signer: &Account, market_id: &str) -> Vec
 
     let mut callable_url = format!("{}{}", CLOB_API, request_path);
 
-    webservice::add_param_to_url(&mut callable_url, "market", market_id);
+    WebserviceRequest::add_param_to_url(&mut callable_url, "market", market_id);
 
     let l2_headers = build_l2_headers(signer, method, request_path, body, "");
 

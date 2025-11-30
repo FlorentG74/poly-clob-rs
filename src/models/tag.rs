@@ -4,7 +4,6 @@ use super::ApiResponse;
 
 pub type PolymarketTagsResponse = Vec<PolyResponseTag>;
 
-#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PolyResponseTag {
