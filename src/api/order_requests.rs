@@ -59,6 +59,7 @@ use super::clob_endpoints::{CLOB_API, POST_ORDER};
 ///     0.52,
 ///     10.0,
 ///     Side::Buy,
+///     false,
 ///     "1234567890",
 ///     OrderType::FOK,
 ///     0

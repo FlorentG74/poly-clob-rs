@@ -78,7 +78,7 @@ impl WebserviceRequest {
     /// let mut request = WebserviceRequest::new_markets_ws_request();
     /// request.with_active_only();
     ///
-    /// let (next_offset, markets) = fetch_batch::<MarketsResponse>(&client, &request, 0).await;
+    /// let (next_offset, markets) = WebserviceRequest::fetch_batch::<MarketsResponse>(&client, &request, 0).await;
     /// if let Some(data) = markets {
     ///     println!("Retrieved {} markets", data.len());
     /// }
@@ -215,14 +215,14 @@ impl WebserviceRequest {
     /// # Example
     ///
     /// ```rust,no_run
-    /// use poly_clob_rs::{WebserviceRequest, PolyResponseMarket, api::webservice::fetch_one};
+    /// use poly_clob_rs::{WebserviceRequest, PolyResponseMarket};
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let client = reqwest::Client::new();
     /// let mut request = WebserviceRequest::new_market_ws_request();
     /// request.with_slug("bitcoin-above-100k");
     ///
-    /// let market = fetch_one::<PolyResponseMarket>(&client, &request).await;
+    /// let market = WebserviceRequest::fetch_one::<PolyResponseMarket>(&client, &request).await;
     /// if let Some(m) = market {
     ///     println!("Found market: {:?}", m.question);
     /// }
