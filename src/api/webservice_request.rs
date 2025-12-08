@@ -153,6 +153,7 @@ impl WebserviceRequest {
                     reqwest::StatusCode::TOO_MANY_REQUESTS
                     | reqwest::StatusCode::GATEWAY_TIMEOUT
                     | reqwest::StatusCode::BAD_GATEWAY
+                    | reqwest::StatusCode::INTERNAL_SERVER_ERROR
                     | reqwest::StatusCode::CONFLICT => {
                         if attempt < MAX_RETRIES {
                             log::warn!(
@@ -290,6 +291,7 @@ impl WebserviceRequest {
                 reqwest::StatusCode::TOO_MANY_REQUESTS
                 | reqwest::StatusCode::GATEWAY_TIMEOUT
                 | reqwest::StatusCode::BAD_GATEWAY
+                | reqwest::StatusCode::INTERNAL_SERVER_ERROR
                 | reqwest::StatusCode::CONFLICT => {
                     if attempt < MAX_RETRIES {
                         log::warn!(
