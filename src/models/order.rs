@@ -1,5 +1,6 @@
 use crate::api::auth::{build_l1_signature, EIP712Struct};
 use crate::models::{OrderType, Side};
+use anyhow::{Context, Result};
 use serde::Serialize;
 
 use alloy::{
@@ -129,8 +130,8 @@ impl Order {
         nonce: i32,
         api_key: &str,
         pk: &str,
-    ) -> String {
-        let signature = build_l1_signature(self, salt, nonce, pk).to_string();
+    ) -> Result<String> {
+        let signature = build_l1_signature(self, salt, nonce, pk)?;
 
         log::debug!("Signature added to msg: {}", signature);
 
@@ -156,7 +157,7 @@ impl Order {
             order_type: self.order_type.to_string(),
         };
 
-        serde_json::to_string(&body).expect("Error serializing order query body")
+        serde_json::to_string(&body).context("failed to serialize order query body")
     }
 }
 
@@ -194,7 +195,7 @@ impl EIP712Struct for Order {
         keccak256("Order(uint256 salt,address maker,address signer,address taker,uint256 tokenId,uint256 makerAmount,uint256 takerAmount,uint256 expiration,uint256 nonce,uint256 feeRateBps,uint8 side,uint8 signatureType)")
     }
 
-    fn get_message_values(&self, salt: &str, nonce: i32) -> DynSolValue {
+    fn get_message_values(&self, salt: &str, nonce: i32) -> Result<DynSolValue> {
         // Message type (Order structure)
         let _message_type = DynSolType::Tuple(vec![
             DynSolType::Uint(256),
@@ -211,13 +212,24 @@ impl EIP712Struct for Order {
             DynSolType::Uint(8),
         ]);
 
+        let salt_u256 = U256::from_str(salt)
+            .with_context(|| format!("invalid salt: {salt}"))?;
+        let maker_addr = Address::from_str(&self.maker)
+            .with_context(|| format!("invalid maker address: {}", self.maker))?;
+        let signer_addr = Address::from_str(&self.signer)
+            .with_context(|| format!("invalid signer address: {}", self.signer))?;
+        let taker_addr = Address::from_str(&self.taker)
+            .with_context(|| format!("invalid taker address: {}", self.taker))?;
+        let token_id_u256 = U256::from_str(&self.token_id)
+            .with_context(|| format!("invalid token_id: {}", self.token_id))?;
+
         // Populate values from object
-        DynSolValue::Tuple(vec![
-            DynSolValue::Uint(U256::from_str(salt).unwrap(), 256),
-            DynSolValue::Address(Address::from_str(self.maker.as_str()).unwrap()),
-            DynSolValue::Address(Address::from_str(self.signer.as_str()).unwrap()),
-            DynSolValue::Address(Address::from_str(self.taker.as_str()).unwrap()),
-            DynSolValue::Uint(U256::from_str(self.token_id.as_str()).unwrap(), 256),
+        Ok(DynSolValue::Tuple(vec![
+            DynSolValue::Uint(salt_u256, 256),
+            DynSolValue::Address(maker_addr),
+            DynSolValue::Address(signer_addr),
+            DynSolValue::Address(taker_addr),
+            DynSolValue::Uint(token_id_u256, 256),
             DynSolValue::Uint(U256::from(self.maker_amount), 256),
             DynSolValue::Uint(U256::from(self.taker_amount), 256),
             DynSolValue::Uint(U256::from(self.expiration), 256),
@@ -225,7 +237,7 @@ impl EIP712Struct for Order {
             DynSolValue::Uint(U256::from(self.fee_rate_bps), 256),
             DynSolValue::Uint(U256::from(self.side.to_int()), 8),
             DynSolValue::Uint(U256::from(self.signature_type), 8),
-        ])
+        ]))
     }
 }
 
@@ -357,7 +369,7 @@ mod tests {
         let api_key = "test_api_key";
         let pk = "0x1234567890123456789012345678901234567890123456789012345678901234";
 
-        let body = order.build_order_query_body(salt, nonce, api_key, pk);
+        let body = order.build_order_query_body(salt, nonce, api_key, pk).unwrap();
 
         // Verify the body is as expected
         assert!(expected_body.eq(&body));
@@ -384,7 +396,7 @@ mod tests {
             0,
             "key",
             "0x1234567890123456789012345678901234567890123456789012345678901234",
-        );
+        ).unwrap();
         assert!(body.contains("\"orderType\":\"FOK\""));
     }
 
@@ -409,7 +421,7 @@ mod tests {
             0,
             "key",
             "0x1234567890123456789012345678901234567890123456789012345678901234",
-        );
+        ).unwrap();
         assert!(body.contains("\"orderType\":\"FAK\""));
     }
 
@@ -434,7 +446,7 @@ mod tests {
             0,
             "key",
             "0x1234567890123456789012345678901234567890123456789012345678901234",
-        );
+        ).unwrap();
         assert!(body.contains("\"orderType\":\"GTC\""));
     }
 
@@ -459,7 +471,7 @@ mod tests {
             0,
             "key",
             "0x1234567890123456789012345678901234567890123456789012345678901234",
-        );
+        ).unwrap();
         assert!(body.contains("\"orderType\":\"GTD\""));
     }
 
@@ -484,7 +496,7 @@ mod tests {
             0,
             "key",
             "0x1234567890123456789012345678901234567890123456789012345678901234",
-        );
+        ).unwrap();
         assert!(body.contains("\"side\":\"BUY\""));
     }
 
@@ -509,7 +521,7 @@ mod tests {
             0,
             "key",
             "0x1234567890123456789012345678901234567890123456789012345678901234",
-        );
+        ).unwrap();
         assert!(body.contains("\"side\":\"SELL\""));
     }
 
@@ -534,7 +546,7 @@ mod tests {
             0,
             "key",
             "0x1234567890123456789012345678901234567890123456789012345678901234",
-        );
+        ).unwrap();
 
         // Signature should be present in the body
         assert!(body.contains("\"signature\":\"0x"));
@@ -562,7 +574,7 @@ mod tests {
             0,
             api_key,
             "0x1234567890123456789012345678901234567890123456789012345678901234",
-        );
+        ).unwrap();
 
         assert!(body.contains(&format!("\"owner\":\"{}\"", api_key)));
     }
@@ -589,7 +601,7 @@ mod tests {
             0,
             "key",
             "0x1234567890123456789012345678901234567890123456789012345678901234",
-        );
+        ).unwrap();
 
         assert!(body.contains(&format!("\"salt\":{}", salt)));
     }

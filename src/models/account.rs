@@ -1,3 +1,4 @@
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -21,7 +22,7 @@ pub struct Account {
 }
 
 impl Account {
-    pub fn load_poly_account() -> Self {
+    pub fn load_poly_account() -> Result<Self> {
         use dotenv::dotenv;
         use std::env;
 
@@ -41,17 +42,17 @@ impl Account {
             _ => None,
         };
 
-        Account {
-            poly_address: env::var("POLY_ADDRESS").expect("Missing POLY_ADDRESS"),
-            pub_key: env::var("PUB_KEY").expect("Missing PUB_KEY"),
-            private_key: env::var("PRIVATE_KEY").expect("Missing PRIVATE_KEY"),
-            api_key: env::var("API_KEY").expect("Missing API_KEY"),
-            api_secret: env::var("API_SECRET").expect("Missing API_SECRET"),
-            api_passphrase: env::var("API_PASSPHRASE").expect("Missing API_PASSPHRASE"),
+        Ok(Account {
+            poly_address: env::var("POLY_ADDRESS").context("missing POLY_ADDRESS env var")?,
+            pub_key: env::var("PUB_KEY").context("missing PUB_KEY env var")?,
+            private_key: env::var("PRIVATE_KEY").context("missing PRIVATE_KEY env var")?,
+            api_key: env::var("API_KEY").context("missing API_KEY env var")?,
+            api_secret: env::var("API_SECRET").context("missing API_SECRET env var")?,
+            api_passphrase: env::var("API_PASSPHRASE").context("missing API_PASSPHRASE env var")?,
             account_type: AccountType::PolymarketAccount,
             telegram_chat_id,
             telegram_bot_token,
-        }
+        })
     }
 
     pub fn load_paper_account(account_name: &str) -> Self {
@@ -68,10 +69,7 @@ impl Account {
             Err(_) => None,
         };
 
-        let telegram_bot_token = match env::var("TELEGRAM_BOT_TOKEN") {
-            Ok(val) => Some(val),
-            Err(_) => None,
-        };
+        let telegram_bot_token = env::var("TELEGRAM_BOT_TOKEN").ok();
 
         Account {
             poly_address: account_name.to_string(),
@@ -82,13 +80,13 @@ impl Account {
             api_passphrase: Default::default(),
             account_type: AccountType::PaperAccount,
             telegram_chat_id,
-            telegram_bot_token: telegram_bot_token
+            telegram_bot_token,
         }
     }
 }
 
 impl Default for Account {
     fn default() -> Self {
-        Self::load_poly_account()
+        Self::load_poly_account().expect("failed to load account from environment")
     }
 }

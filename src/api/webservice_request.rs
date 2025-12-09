@@ -24,7 +24,7 @@ impl WebserviceRequest {
     pub fn get_limit(&self) -> i32 {
         for (name, value) in self.args.iter() {
             if name.eq("limit") {
-                return value.parse().unwrap();
+                return value.parse().unwrap_or(100);
             }
         }
         100
@@ -47,8 +47,8 @@ impl WebserviceRequest {
         callable_url
     }
 
-    pub fn get_body(&self) -> String {
-        self.body.clone().unwrap()
+    pub fn get_body(&self) -> Option<String> {
+        self.body.clone()
     }
 
     /// Fetch data from API with pagination support.
@@ -106,9 +106,13 @@ impl WebserviceRequest {
 
             let request = match web_service_request.method {
                 Method::GET => client.get(&callable_url),
-                Method::POST => client
-                    .post(&callable_url)
-                    .body(web_service_request.get_body()),
+                Method::POST => {
+                    let req = client.post(&callable_url);
+                    match web_service_request.get_body() {
+                        Some(body) => req.body(body),
+                        None => req,
+                    }
+                }
                 _ => {
                     log::error!("Unsupported Method");
                     return (-1, None);
@@ -118,16 +122,19 @@ impl WebserviceRequest {
             match request.send().await {
                 Ok(response) => match response.status() {
                     reqwest::StatusCode::OK => {
-                        let text = response
-                            .text()
-                            .await
-                            .expect("Error - can't extract API Response");
+                        let text = match response.text().await {
+                            Ok(t) => t,
+                            Err(e) => {
+                                log::error!("Failed to read response body: {}", e);
+                                return (-1, None);
+                            }
+                        };
                         log::trace!("API Response: {}", text);
 
                         match serde_json::from_str::<T>(&text) {
                             Ok(ws_response) => {
                                 let nb_results_retrieved: i32 =
-                                    ws_response.nb_results().try_into().unwrap();
+                                    ws_response.nb_results() as i32;
 
                                 log::debug!("Retrieved {:?} results", nb_results_retrieved);
 
@@ -247,9 +254,13 @@ impl WebserviceRequest {
 
             let request = match web_service_request.method {
                 Method::GET => client.get(&callable_url),
-                Method::POST => client
-                    .post(&callable_url)
-                    .body(web_service_request.get_body()),
+                Method::POST => {
+                    let req = client.post(&callable_url);
+                    match web_service_request.get_body() {
+                        Some(body) => req.body(body),
+                        None => req,
+                    }
+                }
                 _ => {
                     log::error!("Unsupported Method");
                     return None;
@@ -272,10 +283,13 @@ impl WebserviceRequest {
 
             match response.status() {
                 reqwest::StatusCode::OK => {
-                    let text = response
-                        .text()
-                        .await
-                        .expect("Error - can't extract API Response");
+                    let text = match response.text().await {
+                        Ok(t) => t,
+                        Err(e) => {
+                            log::error!("Failed to read response body: {}", e);
+                            return None;
+                        }
+                    };
                     log::trace!("API Response: {}", text);
 
                     match serde_json::from_str::<T>(&text) {

@@ -4,6 +4,7 @@ use alloy::{
     dyn_abi::{DynSolType, DynSolValue},
     primitives::{keccak256, Address, B256, U256},
 };
+use anyhow::{Context, Result};
 
 use std::str::FromStr;
 
@@ -55,7 +56,7 @@ impl EIP712Struct for L1Header {
         keccak256("Order(address address,string timestamp,uint256 nonce,string message)")
     }
 
-    fn get_message_values(&self, salt: &str, _nonce: i32) -> DynSolValue {
+    fn get_message_values(&self, salt: &str, _nonce: i32) -> Result<DynSolValue> {
         let _message_type = DynSolType::Tuple(vec![
             DynSolType::Address,
             DynSolType::String,
@@ -63,11 +64,15 @@ impl EIP712Struct for L1Header {
             DynSolType::String,
         ]);
 
-        DynSolValue::Tuple(vec![
-            DynSolValue::Address(Address::from_str(self.get_signer()).unwrap()),
+        let signer = self.get_signer();
+        let address = Address::from_str(signer)
+            .with_context(|| format!("invalid signer address: {signer}"))?;
+
+        Ok(DynSolValue::Tuple(vec![
+            DynSolValue::Address(address),
             DynSolValue::String(salt.to_string()),
             DynSolValue::Uint(U256::from(NONCE), 256),
             DynSolValue::String(MESSAGE.to_string()),
-        ])
+        ]))
     }
 }

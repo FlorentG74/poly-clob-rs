@@ -57,9 +57,9 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let account = Account::load_poly_account();
+//!     let account = Account::load_poly_account()?;
 //!
-//!     let mut order = Order::new(
+//!     let order = Order::new(
 //!         &account.poly_address,
 //!         &account.poly_address,
 //!         "0x0000000000000000000000000000000000000000",
@@ -73,7 +73,7 @@
 //!         OrderType::GTC,
 //!     );
 //!
-//!     let body = order.build_order_query_body("123456", 0, &account.api_key, &account.private_key);
+//!     let body = order.build_order_query_body("123456", 0, &account.api_key, &account.private_key)?;
 //!     // Send body to CLOB API...
 //!     Ok(())
 //! }

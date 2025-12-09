@@ -2,11 +2,12 @@
 //!
 //! Provides consistent error handling and rate limiting for API responses.
 
+use anyhow::{bail, Context, Result};
 use reqwest::Response;
 
 /// Handle HTTP API responses with consistent error handling and rate limiting.
 ///
-/// Returns `Ok(String)` with response body on success, or `Err(String)` on failure.
+/// Returns `Ok(String)` with response body on success, or `Err` on failure.
 ///
 /// # Arguments
 ///
@@ -34,13 +35,13 @@ use reqwest::Response;
 /// # Ok(())
 /// # }
 /// ```
-pub async fn handle_api_response(response: Response, url: &str) -> Result<String, String> {
+pub async fn handle_api_response(response: Response, url: &str) -> Result<String> {
     match response.status() {
         reqwest::StatusCode::OK => {
             let text = response
                 .text()
                 .await
-                .map_err(|e| format!("Failed to read response body: {}", e))?;
+                .context("failed to read response body")?;
             log::info!("API response: {}", text);
             Ok(text)
         }
@@ -50,16 +51,16 @@ pub async fn handle_api_response(response: Response, url: &str) -> Result<String
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
             log::error!("Bad request for {}: {}", url, error_text);
-            Err(format!("Bad request: {}", error_text))
+            bail!("bad request: {}", error_text)
         }
         reqwest::StatusCode::UNAUTHORIZED => {
             log::error!("Authentication failed for request {}", url);
-            Err("Unauthorized".to_string())
+            bail!("unauthorized")
         }
         reqwest::StatusCode::TOO_MANY_REQUESTS => {
             log::warn!("Rate limit reached - pausing for 5 secs");
             tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-            Err("Rate limited".to_string())
+            bail!("rate limited")
         }
         other => {
             log::error!(
@@ -67,7 +68,7 @@ pub async fn handle_api_response(response: Response, url: &str) -> Result<String
                 other,
                 url
             );
-            Err(format!("HTTP {}", other))
+            bail!("HTTP {}", other)
         }
     }
 }

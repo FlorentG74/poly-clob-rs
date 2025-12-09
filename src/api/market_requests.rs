@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
+use anyhow::{Context, Result};
 use reqwest::Method;
-use string_builder::Builder;
 
 use crate::{MarketsResponse, PolyResponseMarket};
 
@@ -62,34 +62,24 @@ impl WebserviceRequest {
         self.url = self.url.to_owned() + WITH_SLUG + slug;
     }
 
-    fn format_condition_ids_query(condition_ids: &Vec<String>) -> String {
-        let mut builder = Builder::default();
-
-        let mut it = condition_ids.iter().peekable();
-        while let Some(condition_id) = it.next() {
-            builder.append(condition_id.clone());
-            if it.peek().is_some() {
-                builder.append("&condition_ids=");
-            }
-        }
-
-        builder.string().expect("Error in String conversion")
+    fn format_condition_ids_query(condition_ids: &[String]) -> String {
+        condition_ids.join("&condition_ids=")
     }
 }
 
 pub async fn map_multiple_market_by_condition_ids_ws(
     condition_ids: &Vec<String>,
-) -> Result<HashMap<String, PolyResponseMarket>, String> {
+) -> Result<HashMap<String, PolyResponseMarket>> {
     let mut markets_map: HashMap<String, PolyResponseMarket> = HashMap::new();
 
-    //If market isnt available in database, try to load it from the API
     let markets_vec = load_markets_by_condition_ids(condition_ids, 0)
         .await
-        .unwrap();
+        .context("failed to load markets by condition IDs")?;
 
     for m in markets_vec.into_iter() {
-        let condition_id = m.condition_id.clone();
-        markets_map.insert(condition_id.unwrap(), m);
+        if let Some(condition_id) = m.condition_id.clone() {
+            markets_map.insert(condition_id, m);
+        }
     }
 
     Ok(markets_map)
@@ -98,10 +88,10 @@ pub async fn map_multiple_market_by_condition_ids_ws(
 pub async fn load_markets_by_condition_ids(
     condition_ids: &Vec<String>,
     next_offset: i32,
-) -> Option<MarketsResponse> {
+) -> Result<MarketsResponse> {
     let client = reqwest::Client::builder()
         .build()
-        .expect("Error creating client");
+        .context("failed to create HTTP client")?;
 
     let mut web_service_request = WebserviceRequest::new_markets_ws_request();
     web_service_request.with_condition_ids(condition_ids);
@@ -113,16 +103,18 @@ pub async fn load_markets_by_condition_ids(
     )
     .await;
 
-    result
+    result.context("no markets found for condition IDs")
 }
 
-pub async fn fetch_market_by_slug(slug: &str) -> Option<PolyResponseMarket> {
+pub async fn fetch_market_by_slug(slug: &str) -> Result<PolyResponseMarket> {
     let client = reqwest::Client::builder()
         .build()
-        .expect("Error creating client");
+        .context("failed to create HTTP client")?;
 
     let mut web_service_request = WebserviceRequest::new_markets_ws_request();
     web_service_request.with_slug(slug);
 
-    WebserviceRequest::fetch_one::<PolyResponseMarket>(&client, &web_service_request).await
+    WebserviceRequest::fetch_one::<PolyResponseMarket>(&client, &web_service_request)
+        .await
+        .with_context(|| format!("market not found for slug: {slug}"))
 }

@@ -28,6 +28,7 @@ base64 = { version = "0.22.1" }
 strum_macros = "0.26.4"
 alloy = { version = "0.5.4", features = ["dyn-abi", "signer-local"] }
 log = "0.4.22"
+anyhow = "1.0"
 diesel = { version = "2.2.5", features = ["postgres"], optional = true }
 
 [features]

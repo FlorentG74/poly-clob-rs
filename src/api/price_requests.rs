@@ -35,18 +35,22 @@ impl WebserviceRequest {
 }
 
 fn build_prices_query(token_ids: &[String]) -> String {
-    let mut instruments = Vec::<PolymarketPriceRequest>::new();
+    let instruments: Vec<PolymarketPriceRequest> = token_ids
+        .iter()
+        .flat_map(|token_id| {
+            [
+                PolymarketPriceRequest {
+                    token_id: token_id.to_string(),
+                    side: Side::Sell,
+                },
+                PolymarketPriceRequest {
+                    token_id: token_id.to_string(),
+                    side: Side::Buy,
+                },
+            ]
+        })
+        .collect();
 
-    for token_id in token_ids {
-        instruments.push(PolymarketPriceRequest {
-            token_id: token_id.to_string(),
-            side: Side::Sell,
-        });
-        instruments.push(PolymarketPriceRequest {
-            token_id: token_id.to_string(),
-            side: Side::Buy,
-        });
-    }
-
-    serde_json::to_string(&instruments).unwrap()
+    // This serialization cannot fail for this simple struct
+    serde_json::to_string(&instruments).expect("price request serialization is infallible")
 }

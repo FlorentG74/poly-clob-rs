@@ -2,6 +2,8 @@
 //!
 //! This module provides functions for placing and managing orders on the Polymarket CLOB.
 
+use anyhow::{Context, Result};
+
 use crate::api::auth::{build_l2_headers, get_timestamp, get_zero_address};
 use crate::api::response_handler::handle_api_response;
 use crate::models::{Account, Order, OrderType, Side};
@@ -51,7 +53,7 @@ use super::clob_endpoints::{CLOB_API, POST_ORDER};
 /// use poly_clob_rs::{Account, Side, OrderType, api::order_requests::place_limit_order};
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let account = Account::load_poly_account();
+/// let account = Account::load_poly_account()?;
 ///
 /// // FOK order (expiration must be 0)
 /// let result = place_limit_order(
@@ -91,27 +93,27 @@ pub async fn place_limit_order(
     token_id: &str,
     order_type: OrderType,
     expiration: i64,
-) -> Result<String, String> {
+) -> Result<String> {
     // Validate expiration based on order type
     match order_type {
         OrderType::GTD => {
-            if expiration == 0 {
-                return Err("GTD orders require a non-zero expiration timestamp".to_string());
-            }
+            anyhow::ensure!(
+                expiration != 0,
+                "GTD orders require a non-zero expiration timestamp"
+            );
         }
         OrderType::FOK | OrderType::FAK | OrderType::GTC => {
-            if expiration != 0 {
-                return Err(format!(
-                    "{} orders must have expiration set to 0",
-                    order_type
-                ));
-            }
+            anyhow::ensure!(
+                expiration == 0,
+                "{} orders must have expiration set to 0",
+                order_type
+            );
         }
     }
 
     let client = reqwest::Client::builder()
         .build()
-        .map_err(|e| format!("Error creating HTTP client: {}", e))?;
+        .context("failed to create HTTP client")?;
 
     let method = "POST";
     let request_path = POST_ORDER;
@@ -165,9 +167,9 @@ pub async fn place_limit_order(
         nonce,
         signer.api_key.as_str(),
         signer.private_key.as_str(),
-    );
+    )?;
 
-    let l2_headers = build_l2_headers(signer, method, request_path, &body, &salt);
+    let l2_headers = build_l2_headers(signer, method, request_path, &body, &salt)?;
 
     log::debug!("Signed Order body: {}", &body);
 
@@ -179,7 +181,7 @@ pub async fn place_limit_order(
         .body(body)
         .send()
         .await
-        .map_err(|e| format!("HTTP request failed: {}", e))?;
+        .context("HTTP request failed")?;
 
     log::trace!("API Call Raw Response: {:?}", response);
 
@@ -194,14 +196,14 @@ pub async fn place_limit_order(
     handle_api_response(response, &callable_url).await
 }
 
-pub async fn get_all_open_orders(signer: &Account) -> Vec<OpenOrder> {
+pub async fn get_all_open_orders(signer: &Account) -> Result<Vec<OpenOrder>> {
     get_open_orders_by_market(signer, "").await
 }
 
-pub async fn get_open_orders_by_market(signer: &Account, market_id: &str) -> Vec<OpenOrder> {
+pub async fn get_open_orders_by_market(signer: &Account, market_id: &str) -> Result<Vec<OpenOrder>> {
     let client = reqwest::Client::builder()
         .build()
-        .expect("Error creating client");
+        .context("failed to create HTTP client")?;
 
     let method = "GET";
     let request_path = ORDERS;
@@ -211,7 +213,7 @@ pub async fn get_open_orders_by_market(signer: &Account, market_id: &str) -> Vec
 
     WebserviceRequest::add_param_to_url(&mut callable_url, "market", market_id);
 
-    let l2_headers = build_l2_headers(signer, method, request_path, body, "");
+    let l2_headers = build_l2_headers(signer, method, request_path, body, "")?;
 
     let response = client
         .get(&callable_url)
@@ -220,43 +222,38 @@ pub async fn get_open_orders_by_market(signer: &Account, market_id: &str) -> Vec
         .headers(l2_headers)
         .send()
         .await
-        .unwrap();
-
-    let mut open_orders = Vec::<OpenOrder>::new();
+        .context("failed to send request")?;
 
     match response.status() {
         reqwest::StatusCode::OK => {
-            // on success, parse our JSON to an APIResponse
-            let text = response.text().await.expect("msg");
+            let text = response.text().await.context("failed to read response")?;
             let market_orders: MarketOrders =
-                serde_json::from_str::<MarketOrders>(&text).expect("x");
+                serde_json::from_str(&text).context("failed to parse market orders")?;
 
-            // If no orders, return empty vec
             if market_orders.data.is_empty() {
-                return open_orders;
+                return Ok(Vec::new());
             }
 
-            // Attach markets to orders & convert to Vec<OpenOrder>
-            // Retrieve unique condition_ids and load markets
-            let mut condition_ids = Vec::<String>::new();
-            for market_position in market_orders.data.iter() {
-                condition_ids.push(market_position.market.clone());
-            }
+            let mut condition_ids: Vec<String> = market_orders
+                .data
+                .iter()
+                .map(|p| p.market.clone())
+                .collect();
             condition_ids.sort();
             condition_ids.dedup();
 
             log::trace!("API response: {}", text);
 
-            // Load markets as a batch - aither from DB or webservice
             let markets = market_requests::map_multiple_market_by_condition_ids_ws(&condition_ids)
-                .await
-                .unwrap();
+                .await?;
 
-            // Normalize positions structure
+            let mut open_orders = Vec::new();
             for market_order in market_orders.data {
                 let market = markets
                     .get(&market_order.market)
-                    .expect("Cant attach Market to Position")
+                    .with_context(|| {
+                        format!("market not found for order: {}", market_order.market)
+                    })?
                     .clone();
 
                 open_orders.push(OpenOrder {
@@ -270,38 +267,38 @@ pub async fn get_open_orders_by_market(signer: &Account, market_id: &str) -> Vec
                     original_size: market_order
                         .original_size
                         .parse::<f64>()
-                        .expect("Can't parse original_size"),
+                        .context("failed to parse original_size")?,
                     size_matched: market_order
                         .size_matched
                         .parse::<f64>()
-                        .expect("Can't parse size_matched"),
+                        .context("failed to parse size_matched")?,
                     price: market_order
                         .price
                         .parse::<f64>()
-                        .expect("Can't parse price"),
+                        .context("failed to parse price")?,
                     outcome: market_order.outcome,
                     expiration: market_order.expiration,
                     order_type: market_order.order_type,
                 });
             }
 
-            open_orders
+            Ok(open_orders)
         }
         reqwest::StatusCode::TOO_MANY_REQUESTS => {
             log::error!("Rate Limit reached - pausing for 5 secs");
-            open_orders
+            anyhow::bail!("rate limited")
         }
         reqwest::StatusCode::UNAUTHORIZED => {
             log::error!("Authentication failed for request {}", callable_url);
-            open_orders
+            anyhow::bail!("unauthorized")
         }
         other => {
             log::error!(
-                "Unexpected error in service call - Returning empty dataset: {:?}; url: {}",
+                "Unexpected error in service call: {:?}; url: {}",
                 other,
                 callable_url
             );
-            Vec::<OpenOrder>::new()
+            anyhow::bail!("HTTP {}", other)
         }
     }
 }

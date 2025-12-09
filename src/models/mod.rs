@@ -33,7 +33,7 @@
 //! ```rust,no_run
 //! use poly_clob_rs::{Account, Order, Side, OrderType};
 //!
-//! let account = Account::load_poly_account();
+//! let account = Account::load_poly_account().expect("failed to load account");
 //! let order = Order::new(
 //!     &account.poly_address,
 //!     &account.poly_address,
