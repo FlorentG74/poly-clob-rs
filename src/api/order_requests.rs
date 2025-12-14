@@ -5,6 +5,7 @@
 use anyhow::{Context, Result};
 
 use crate::api::auth::{build_l2_headers, get_timestamp, get_zero_address};
+use crate::api::http_client::get_http_client;
 use crate::api::response_handler::handle_api_response;
 use crate::models::{Account, Order, OrderType, Side};
 use crate::{market_requests, MarketOrders, OpenOrder, WebserviceRequest, ORDERS};
@@ -111,9 +112,7 @@ pub async fn place_limit_order(
         }
     }
 
-    let client = reqwest::Client::builder()
-        .build()
-        .context("failed to create HTTP client")?;
+    let client = get_http_client();
 
     let method = "POST";
     let request_path = POST_ORDER;
@@ -196,21 +195,31 @@ pub async fn place_limit_order(
     handle_api_response(response, &callable_url).await
 }
 
+/// Returns all open orders for the given account.
 pub async fn get_all_open_orders(signer: &Account) -> Result<Vec<OpenOrder>> {
     get_open_orders_by_market(signer, "").await
 }
 
+/// Returns open orders for the given account, optionally filtered by market.
 pub async fn get_open_orders_by_market(signer: &Account, market_id: &str) -> Result<Vec<OpenOrder>> {
-    let client = reqwest::Client::builder()
-        .build()
-        .context("failed to create HTTP client")?;
+    let market_orders = fetch_raw_orders(signer, market_id).await?;
+
+    if market_orders.data.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    enrich_orders_with_markets(market_orders).await
+}
+
+/// Fetches raw orders from the CLOB API.
+async fn fetch_raw_orders(signer: &Account, market_id: &str) -> Result<MarketOrders> {
+    let client = get_http_client();
 
     let method = "GET";
     let request_path = ORDERS;
     let body = "";
 
     let mut callable_url = format!("{}{}", CLOB_API, request_path);
-
     WebserviceRequest::add_param_to_url(&mut callable_url, "market", market_id);
 
     let l2_headers = build_l2_headers(signer, method, request_path, body, "")?;
@@ -224,81 +233,90 @@ pub async fn get_open_orders_by_market(signer: &Account, market_id: &str) -> Res
         .await
         .context("failed to send request")?;
 
+    handle_orders_response(response, &callable_url).await
+}
+
+/// Handles the HTTP response for orders requests.
+async fn handle_orders_response(response: reqwest::Response, url: &str) -> Result<MarketOrders> {
     match response.status() {
         reqwest::StatusCode::OK => {
             let text = response.text().await.context("failed to read response")?;
-            let market_orders: MarketOrders =
-                serde_json::from_str(&text).context("failed to parse market orders")?;
-
-            if market_orders.data.is_empty() {
-                return Ok(Vec::new());
-            }
-
-            let mut condition_ids: Vec<String> = market_orders
-                .data
-                .iter()
-                .map(|p| p.market.clone())
-                .collect();
-            condition_ids.sort();
-            condition_ids.dedup();
-
             log::trace!("API response: {}", text);
-
-            let markets = market_requests::map_multiple_market_by_condition_ids_ws(&condition_ids)
-                .await?;
-
-            let mut open_orders = Vec::new();
-            for market_order in market_orders.data {
-                let market = markets
-                    .get(&market_order.market)
-                    .with_context(|| {
-                        format!("market not found for order: {}", market_order.market)
-                    })?
-                    .clone();
-
-                open_orders.push(OpenOrder {
-                    id: market_order.id,
-                    status: market_order.status,
-                    owner: market_order.owner,
-                    maker_address: market_order.maker_address,
-                    market,
-                    asset_id: market_order.asset_id,
-                    side: market_order.side,
-                    original_size: market_order
-                        .original_size
-                        .parse::<f64>()
-                        .context("failed to parse original_size")?,
-                    size_matched: market_order
-                        .size_matched
-                        .parse::<f64>()
-                        .context("failed to parse size_matched")?,
-                    price: market_order
-                        .price
-                        .parse::<f64>()
-                        .context("failed to parse price")?,
-                    outcome: market_order.outcome,
-                    expiration: market_order.expiration,
-                    order_type: market_order.order_type,
-                });
-            }
-
-            Ok(open_orders)
+            serde_json::from_str(&text).context("failed to parse market orders")
         }
         reqwest::StatusCode::TOO_MANY_REQUESTS => {
             log::error!("Rate Limit reached - pausing for 5 secs");
             anyhow::bail!("rate limited")
         }
         reqwest::StatusCode::UNAUTHORIZED => {
-            log::error!("Authentication failed for request {}", callable_url);
+            log::error!("Authentication failed for request {}", url);
             anyhow::bail!("unauthorized")
         }
         other => {
             log::error!(
                 "Unexpected error in service call: {:?}; url: {}",
                 other,
-                callable_url
+                url
             );
             anyhow::bail!("HTTP {}", other)
         }
     }
+}
+
+/// Enriches raw orders with market data.
+async fn enrich_orders_with_markets(market_orders: MarketOrders) -> Result<Vec<OpenOrder>> {
+    let condition_ids = extract_unique_condition_ids(&market_orders.data);
+
+    let markets = market_requests::map_multiple_market_by_condition_ids_ws(&condition_ids).await?;
+
+    market_orders
+        .data
+        .into_iter()
+        .map(|order| {
+            let market = markets
+                .get(&order.market)
+                .with_context(|| format!("market not found for order: {}", order.market))?
+                .clone();
+            parse_market_order(order, market)
+        })
+        .collect()
+}
+
+/// Extracts unique condition IDs from orders.
+fn extract_unique_condition_ids(orders: &[crate::MarketOrder]) -> Vec<String> {
+    let mut condition_ids: Vec<String> = orders.iter().map(|p| p.market.clone()).collect();
+    condition_ids.sort();
+    condition_ids.dedup();
+    condition_ids
+}
+
+/// Parses a raw market order into an OpenOrder with market data.
+fn parse_market_order(
+    order: crate::MarketOrder,
+    market: crate::PolyResponseMarket,
+) -> Result<OpenOrder> {
+    Ok(OpenOrder {
+        id: order.id,
+        status: order.status,
+        owner: order.owner,
+        maker_address: order.maker_address,
+        market,
+        asset_id: order.asset_id,
+        side: order.side,
+        original_size: order
+            .original_size
+            .parse::<f64>()
+            .context("failed to parse original_size")?,
+        size_matched: order
+            .size_matched
+            .parse::<f64>()
+            .context("failed to parse size_matched")?,
+        price: order
+            .price
+            .parse::<f64>()
+            .context("failed to parse price")?,
+        outcome: order.outcome,
+        expiration: order.expiration,
+        order_type: order.order_type,
+    })
 }

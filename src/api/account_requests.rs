@@ -2,13 +2,16 @@
 //!
 //! This module provides functions for managing account allowances and API keys on the Polymarket CLOB.
 
-use crate::api::auth::{build_l2_headers, get_timestamp, get_zero_address};
+use anyhow::{Context, Result};
+
+use crate::api::auth::build_l2_headers;
+use crate::api::http_client::get_http_client;
 use crate::api::response_handler::handle_api_response;
-use crate::models::{Account, AssetType, Order, OrderType, Side};
-use crate::{MarketOrders, ORDERS, OpenOrder, WebserviceRequest, market_requests};
+use crate::models::{Account, AssetType};
+use crate::WebserviceRequest;
 use reqwest::header::*;
 
-use super::clob_endpoints::{CLOB_API, GET_API_KEYS, GET_BALANCE_ALLOWANCE, POST_ORDER};
+use super::clob_endpoints::{CLOB_API, GET_API_KEYS, GET_BALANCE_ALLOWANCE};
 
 /// Get balance and allowance for an account.
 ///
@@ -21,16 +24,14 @@ use super::clob_endpoints::{CLOB_API, GET_API_KEYS, GET_BALANCE_ALLOWANCE, POST_
 ///
 /// # Returns
 ///
-/// Returns `Ok(String)` with the API response on success, or `Err(String)` on failure.
+/// Returns `Ok(String)` with the API response on success, or an error on failure.
 pub async fn get_balance_allowance(
     signer: &Account,
     asset_type: AssetType,
     token_id: &str,
     signature_type: i32,
-) -> Result<String, String> {
-    let client = reqwest::Client::builder()
-        .build()
-        .map_err(|e| format!("Error creating HTTP client: {}", e))?;
+) -> Result<String> {
+    let client = get_http_client();
 
     let method = "GET";
     let request_path = GET_BALANCE_ALLOWANCE;
@@ -45,7 +46,7 @@ pub async fn get_balance_allowance(
         WebserviceRequest::add_param_to_url(&mut callable_url, "signature_type", signature_str.as_str());
     }
 
-    let l2_headers = build_l2_headers(signer, method, request_path, body, "");
+    let l2_headers = build_l2_headers(signer, method, request_path, body, "")?;
 
     let response = client
         .get(&callable_url)
@@ -54,7 +55,7 @@ pub async fn get_balance_allowance(
         .headers(l2_headers)
         .send()
         .await
-        .map_err(|e| format!("HTTP request failed: {}", e))?;
+        .context("HTTP request failed")?;
 
     handle_api_response(response, &callable_url).await
 }
@@ -68,11 +69,9 @@ pub async fn get_balance_allowance(
 ///
 /// # Returns
 ///
-/// Returns `Ok(String)` with the API response on success, or `Err(String)` on failure.
-pub async fn get_api_key(signer: &Account, signature_type: i32) -> Result<String, String> {
-    let client = reqwest::Client::builder()
-        .build()
-        .map_err(|e| format!("Error creating HTTP client: {}", e))?;
+/// Returns `Ok(String)` with the API response on success, or an error on failure.
+pub async fn get_api_key(signer: &Account, signature_type: i32) -> Result<String> {
+    let client = get_http_client();
 
     let method = "GET";
     let request_path = GET_API_KEYS;
@@ -85,7 +84,7 @@ pub async fn get_api_key(signer: &Account, signature_type: i32) -> Result<String
         WebserviceRequest::add_param_to_url(&mut callable_url, "signature_type", signature_str.as_str());
     }
 
-    let l2_headers = build_l2_headers(signer, method, request_path, body, "");
+    let l2_headers = build_l2_headers(signer, method, request_path, body, "")?;
 
     let response = client
         .get(&callable_url)
@@ -94,7 +93,7 @@ pub async fn get_api_key(signer: &Account, signature_type: i32) -> Result<String
         .headers(l2_headers)
         .send()
         .await
-        .map_err(|e| format!("HTTP request failed: {}", e))?;
+        .context("HTTP request failed")?;
 
     handle_api_response(response, &callable_url).await
 }

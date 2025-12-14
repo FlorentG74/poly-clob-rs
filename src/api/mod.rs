@@ -30,7 +30,9 @@
 
 pub mod auth;
 pub mod clob_endpoints;
+pub mod error;
 pub mod event_requests;
+pub mod http_client;
 pub mod market_requests;
 pub mod order_requests;
 pub mod position_requests;

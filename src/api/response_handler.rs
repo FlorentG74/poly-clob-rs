@@ -1,11 +1,18 @@
 //! HTTP response handling utilities.
 //!
-//! Provides consistent error handling and rate limiting for API responses.
+//! Provides consistent error handling for API responses.
 
-use anyhow::{bail, Context, Result};
-use reqwest::Response;
+use std::time::Duration;
 
-/// Handle HTTP API responses with consistent error handling and rate limiting.
+use anyhow::{Context, Result};
+use reqwest::{Response, StatusCode};
+
+use super::error::ApiError;
+
+/// Default retry delay for rate limiting (in seconds).
+pub const DEFAULT_RATE_LIMIT_DELAY_SECS: u64 = 5;
+
+/// Handle HTTP API responses with consistent error handling.
 ///
 /// Returns `Ok(String)` with response body on success, or `Err` on failure.
 ///
@@ -17,10 +24,20 @@ use reqwest::Response;
 /// # Behavior
 ///
 /// - **200 OK**: Returns the response body as a string
-/// - **400 Bad Request**: Logs error with response body, returns error
-/// - **401 Unauthorized**: Logs authentication error, returns error
-/// - **429 Too Many Requests**: Logs warning, sleeps for 5 seconds, returns error
-/// - **Other**: Logs unexpected error, returns error
+/// - **400 Bad Request**: Returns `ApiError::BadRequest` with error details
+/// - **401 Unauthorized**: Returns `ApiError::Unauthorized`
+/// - **403 Forbidden**: Returns `ApiError::Forbidden`
+/// - **404 Not Found**: Returns `ApiError::NotFound`
+/// - **429 Too Many Requests**: Returns `ApiError::RateLimited` with retry delay
+/// - **5xx Server Errors**: Returns `ApiError::ServerError` (retryable for 502/503/504)
+/// - **Other**: Returns `ApiError::Other`
+///
+/// # Rate Limiting
+///
+/// This function does NOT automatically sleep on rate limits. Instead, it returns
+/// an `ApiError::RateLimited` error with a suggested retry delay. Callers can use
+/// `ApiError::is_retryable()` and `ApiError::retry_after()` to implement their own
+/// retry strategy.
 ///
 /// # Example
 ///
@@ -36,8 +53,10 @@ use reqwest::Response;
 /// # }
 /// ```
 pub async fn handle_api_response(response: Response, url: &str) -> Result<String> {
-    match response.status() {
-        reqwest::StatusCode::OK => {
+    let status = response.status();
+
+    match status {
+        StatusCode::OK => {
             let text = response
                 .text()
                 .await
@@ -45,30 +64,102 @@ pub async fn handle_api_response(response: Response, url: &str) -> Result<String
             log::info!("API response: {}", text);
             Ok(text)
         }
-        reqwest::StatusCode::BAD_REQUEST => {
+        StatusCode::BAD_REQUEST => {
             let error_text = response
                 .text()
                 .await
                 .unwrap_or_else(|_| "Unknown error".to_string());
             log::error!("Bad request for {}: {}", url, error_text);
-            bail!("bad request: {}", error_text)
+            Err(ApiError::BadRequest {
+                message: error_text,
+            }
+            .into())
         }
-        reqwest::StatusCode::UNAUTHORIZED => {
+        StatusCode::UNAUTHORIZED => {
             log::error!("Authentication failed for request {}", url);
-            bail!("unauthorized")
+            Err(ApiError::Unauthorized.into())
         }
-        reqwest::StatusCode::TOO_MANY_REQUESTS => {
-            log::warn!("Rate limit reached - pausing for 5 secs");
-            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-            bail!("rate limited")
+        StatusCode::FORBIDDEN => {
+            log::error!("Access forbidden for request {}", url);
+            Err(ApiError::Forbidden.into())
+        }
+        StatusCode::NOT_FOUND => {
+            log::error!("Resource not found: {}", url);
+            Err(ApiError::NotFound {
+                url: url.to_string(),
+            }
+            .into())
+        }
+        StatusCode::TOO_MANY_REQUESTS => {
+            let retry_after = parse_retry_after(&response)
+                .unwrap_or(Duration::from_secs(DEFAULT_RATE_LIMIT_DELAY_SECS));
+            log::warn!(
+                "Rate limit reached for {}, retry after {:?}",
+                url,
+                retry_after
+            );
+            Err(ApiError::RateLimited { retry_after }.into())
+        }
+        // Server errors
+        StatusCode::INTERNAL_SERVER_ERROR => {
+            log::error!("Internal server error for {}", url);
+            Err(ApiError::ServerError {
+                status: 500,
+                retryable: false,
+            }
+            .into())
+        }
+        StatusCode::BAD_GATEWAY => {
+            log::error!("Bad gateway for {}", url);
+            Err(ApiError::ServerError {
+                status: 502,
+                retryable: true,
+            }
+            .into())
+        }
+        StatusCode::SERVICE_UNAVAILABLE => {
+            log::error!("Service unavailable for {}", url);
+            Err(ApiError::ServerError {
+                status: 503,
+                retryable: true,
+            }
+            .into())
+        }
+        StatusCode::GATEWAY_TIMEOUT => {
+            log::error!("Gateway timeout for {}", url);
+            Err(ApiError::ServerError {
+                status: 504,
+                retryable: true,
+            }
+            .into())
         }
         other => {
+            let status_code = other.as_u16();
+            let message = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unknown error".to_string());
             log::error!(
-                "Unexpected error in service call: {:?}; url: {}",
-                other,
-                url
+                "Unexpected error {} in service call to {}: {}",
+                status_code,
+                url,
+                message
             );
-            bail!("HTTP {}", other)
+            Err(ApiError::Other {
+                status: status_code,
+                message,
+            }
+            .into())
         }
     }
+}
+
+/// Parse the Retry-After header from a response.
+fn parse_retry_after(response: &Response) -> Option<Duration> {
+    response
+        .headers()
+        .get("retry-after")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<u64>().ok())
+        .map(Duration::from_secs)
 }

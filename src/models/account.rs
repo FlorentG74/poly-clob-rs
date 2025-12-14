@@ -21,6 +21,28 @@ pub struct Account {
     pub telegram_bot_token: Option<String>,
 }
 
+/// Telegram configuration loaded from environment variables.
+struct TelegramConfig {
+    chat_id: Option<i64>,
+    bot_token: Option<String>,
+}
+
+/// Loads telegram configuration from environment variables.
+fn load_telegram_config() -> TelegramConfig {
+    use std::env;
+
+    let chat_id = env::var("TELEGRAM_CHAT_ID")
+        .ok()
+        .and_then(|v| v.parse::<i64>().ok())
+        .filter(|&id| id != 0);
+
+    let bot_token = env::var("TELEGRAM_BOT_TOKEN")
+        .ok()
+        .filter(|t| !t.is_empty());
+
+    TelegramConfig { chat_id, bot_token }
+}
+
 impl Account {
     pub fn load_poly_account() -> Result<Self> {
         use dotenv::dotenv;
@@ -28,19 +50,7 @@ impl Account {
 
         dotenv().ok();
 
-        // Set Telegram params
-        let telegram_chat_id = match env::var("TELEGRAM_CHAT_ID") {
-            Ok(val) => match val.parse::<i64>() {
-                Ok(chat_id) if chat_id != 0 => Some(chat_id),
-                _ => None,
-            },
-            Err(_) => None,
-        };
-
-        let telegram_bot_token = match env::var("TELEGRAM_BOT_TOKEN") {
-            Ok(token) if !token.is_empty() => Some(token),
-            _ => None,
-        };
+        let telegram = load_telegram_config();
 
         Ok(Account {
             poly_address: env::var("POLY_ADDRESS").context("missing POLY_ADDRESS env var")?,
@@ -50,26 +60,17 @@ impl Account {
             api_secret: env::var("API_SECRET").context("missing API_SECRET env var")?,
             api_passphrase: env::var("API_PASSPHRASE").context("missing API_PASSPHRASE env var")?,
             account_type: AccountType::PolymarketAccount,
-            telegram_chat_id,
-            telegram_bot_token,
+            telegram_chat_id: telegram.chat_id,
+            telegram_bot_token: telegram.bot_token,
         })
     }
 
     pub fn load_paper_account(account_name: &str) -> Self {
         use dotenv::dotenv;
-        use std::env;
 
         dotenv().ok();
 
-        let telegram_chat_id = match env::var("TELEGRAM_CHAT_ID") {
-            Ok(val) => match val.parse::<i64>() {
-                Ok(chat_id) if chat_id != 0 => Some(chat_id),
-                _ => None,
-            },
-            Err(_) => None,
-        };
-
-        let telegram_bot_token = env::var("TELEGRAM_BOT_TOKEN").ok();
+        let telegram = load_telegram_config();
 
         Account {
             poly_address: account_name.to_string(),
@@ -79,8 +80,8 @@ impl Account {
             api_secret: Default::default(),
             api_passphrase: Default::default(),
             account_type: AccountType::PaperAccount,
-            telegram_chat_id,
-            telegram_bot_token,
+            telegram_chat_id: telegram.chat_id,
+            telegram_bot_token: telegram.bot_token,
         }
     }
 }

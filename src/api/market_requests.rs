@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use anyhow::{Context, Result};
 use reqwest::Method;
 
+use crate::api::http_client::get_http_client;
 use crate::{MarketsResponse, PolyResponseMarket};
 
 use super::{WebserviceRequest, GAMMA_API, GET_MARKET, GET_MARKETS, WITH_SLUG};
@@ -89,9 +90,7 @@ pub async fn load_markets_by_condition_ids(
     condition_ids: &Vec<String>,
     next_offset: i32,
 ) -> Result<MarketsResponse> {
-    let client = reqwest::Client::builder()
-        .build()
-        .context("failed to create HTTP client")?;
+    let client = get_http_client();
 
     let mut web_service_request = WebserviceRequest::new_markets_ws_request();
     web_service_request.with_condition_ids(condition_ids);
@@ -107,9 +106,7 @@ pub async fn load_markets_by_condition_ids(
 }
 
 pub async fn fetch_market_by_slug(slug: &str) -> Result<PolyResponseMarket> {
-    let client = reqwest::Client::builder()
-        .build()
-        .context("failed to create HTTP client")?;
+    let client = get_http_client();
 
     let mut web_service_request = WebserviceRequest::new_markets_ws_request();
     web_service_request.with_slug(slug);
