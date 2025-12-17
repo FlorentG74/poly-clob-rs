@@ -96,7 +96,7 @@ pub async fn load_markets_by_condition_ids(
     web_service_request.with_condition_ids(condition_ids);
 
     let (_, result) = WebserviceRequest::fetch_batch::<MarketsResponse>(
-        &client,
+        client,
         &web_service_request,
         next_offset,
     )
@@ -111,7 +111,7 @@ pub async fn fetch_market_by_slug(slug: &str) -> Result<PolyResponseMarket> {
     let mut web_service_request = WebserviceRequest::new_markets_ws_request();
     web_service_request.with_slug(slug);
 
-    WebserviceRequest::fetch_one::<PolyResponseMarket>(&client, &web_service_request)
+    WebserviceRequest::fetch_one::<PolyResponseMarket>(client, &web_service_request)
         .await
         .with_context(|| format!("market not found for slug: {slug}"))
 }
