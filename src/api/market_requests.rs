@@ -52,7 +52,7 @@ impl WebserviceRequest {
             .push(("related_tags".to_string(), "true".to_string()));
     }
 
-    pub fn with_condition_ids(&mut self, condition_ids: &Vec<String>) {
+    pub fn with_condition_ids(&mut self, condition_ids: &[String]) {
         self.args.push((
             "condition_ids".to_string(),
             Self::format_condition_ids_query(condition_ids),
@@ -69,7 +69,7 @@ impl WebserviceRequest {
 }
 
 pub async fn map_multiple_market_by_condition_ids_ws(
-    condition_ids: &Vec<String>,
+    condition_ids: &[String],
 ) -> Result<HashMap<String, PolyResponseMarket>> {
     let mut markets_map: HashMap<String, PolyResponseMarket> = HashMap::new();
 
@@ -87,7 +87,7 @@ pub async fn map_multiple_market_by_condition_ids_ws(
 }
 
 pub async fn load_markets_by_condition_ids(
-    condition_ids: &Vec<String>,
+    condition_ids: &[String],
     next_offset: i32,
 ) -> Result<MarketsResponse> {
     let client = get_http_client();
