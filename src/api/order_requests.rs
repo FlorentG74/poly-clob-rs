@@ -26,6 +26,7 @@ use super::clob_endpoints::{CLOB_API, POST_ORDER};
 ///
 /// # Optional Fields (with defaults)
 ///
+/// * `condition_id` - The market condition ID (default: empty, used for paper trading)
 /// * `neg_risk` - Whether this is a neg-risk market (default: false)
 /// * `order_type` - The type of order (default: GTC)
 /// * `expiration` - Order expiration timestamp (default: 0, required non-zero for GTD orders)
@@ -82,6 +83,9 @@ pub struct LimitOrderRequest<'a> {
     /// The token ID for the outcome
     #[builder(setter(into))]
     pub token_id: &'a str,
+    /// The market condition ID (used for paper trading integration)
+    #[builder(default = "", setter(into))]
+    pub condition_id: &'a str,
     /// Whether this is a neg-risk market
     #[builder(default = false)]
     pub neg_risk: bool,
