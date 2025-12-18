@@ -78,36 +78,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### Authentication and Order Placement
 
 ```rust
-use poly_clob_rs::{Account, Order, Side, OrderType};
+use poly_clob_rs::{Account, Side, OrderType, api::order_requests::LimitOrderRequest};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load account credentials from environment
-    let account = Account::load_poly_account();
+    let account = Account::load_poly_account()?;
 
-    // Create an order
-    let mut order = Order::new(
-        account.poly_address.clone(),  // maker
-        account.poly_address.clone(),  // signer
-        "0x0000000000000000000000000000000000000000".to_string(),  // taker
-        "token_id".to_string(),
-        "100000000000000000000".to_string(),  // 100 tokens (18 decimals)
-        "50000000000000000000".to_string(),   // 50 USDC (18 decimals)
-        9999999999,  // expiration timestamp
-        10,          // 0.1% fee
-        Side::BUY,
-        OrderType::GTC,
-    );
+    // Place a simple GTC order with sensible defaults
+    let result = LimitOrderRequest::builder()
+        .signer(&account)
+        .price(0.52)
+        .size(10.0)
+        .side(Side::Buy)
+        .token_id("token_id")
+        .build()
+        .execute()
+        .await?;
 
-    // Sign the order with your private key
-    let body = order.build_order_query_body(
-        123456,  // salt
-        &account.api_key,
-        &account.private_key,
-    )?;
+    println!("Order placed: {}", result);
 
-    // Send the order to the API
-    // (HTTP client code omitted for brevity)
+    // Or with explicit options (GTD order with expiration)
+    let result = LimitOrderRequest::builder()
+        .signer(&account)
+        .price(0.52)
+        .size(10.0)
+        .side(Side::Buy)
+        .token_id("token_id")
+        .neg_risk(true)
+        .order_type(OrderType::GTD)
+        .expiration(1735689600)
+        .build()
+        .execute()
+        .await?;
 
     Ok(())
 }
@@ -177,10 +180,20 @@ The library provides access to three Polymarket API bases:
 L1 authentication uses EIP-712 signatures for order placement. Orders are signed with your Ethereum private key:
 
 ```rust
-use poly_clob_rs::Order;
+use poly_clob_rs::{Order, Side, OrderType};
 
-let mut order = Order::new(/* parameters */);
-let signed_body = order.build_order_query_body(salt, api_key, private_key)?;
+let order = Order::builder()
+    .maker("0x...")
+    .signer("0x...")
+    .taker("0x0000000000000000000000000000000000000000")
+    .token_id("token_id")
+    .maker_amount(100)
+    .taker_amount(50)
+    .side(Side::Buy)
+    .order_type(OrderType::GTC)
+    .build();
+
+let signed_body = order.build_order_query_body(salt, nonce, api_key, private_key)?;
 ```
 
 ### L2 Authentication (HMAC)

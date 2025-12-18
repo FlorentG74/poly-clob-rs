@@ -53,28 +53,24 @@
 //! ### Placing Orders
 //!
 //! ```rust,no_run
-//! use poly_clob_rs::{Account, Order, Side, OrderType};
+//! use poly_clob_rs::{Account, Side, OrderType, api::order_requests::LimitOrderRequest};
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     let account = Account::load_poly_account()?;
 //!
-//!     let order = Order::new(
-//!         &account.poly_address,
-//!         &account.poly_address,
-//!         "0x0000000000000000000000000000000000000000",
-//!         "token_id",
-//!         100,
-//!         50,
-//!         9999999999,
-//!         10,
-//!         Side::Buy,
-//!         false,
-//!         OrderType::GTC,
-//!     );
+//!     // Simple order with defaults (GTC, expiration=0)
+//!     let result = LimitOrderRequest::builder()
+//!         .signer(&account)
+//!         .price(0.52)
+//!         .size(10.0)
+//!         .side(Side::Buy)
+//!         .token_id("token_id")
+//!         .build()
+//!         .execute()
+//!         .await?;
 //!
-//!     let body = order.build_order_query_body("123456", 0, &account.api_key, &account.private_key)?;
-//!     // Send body to CLOB API...
+//!     println!("Order placed: {}", result);
 //!     Ok(())
 //! }
 //! ```

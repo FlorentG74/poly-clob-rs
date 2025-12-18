@@ -26,6 +26,7 @@ sha2 = { version = "0.10.8" }
 hmac = "0.12.1"
 base64 = { version = "0.22.1" }
 strum_macros = "0.26.4"
+typed-builder = "0.20"
 alloy = { version = "0.5.4", features = ["dyn-abi", "signer-local"] }
 log = "0.4.22"
 anyhow = "1.0"

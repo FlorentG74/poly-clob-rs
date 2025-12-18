@@ -3,6 +3,7 @@
 //! This module provides functions for placing and managing orders on the Polymarket CLOB.
 
 use anyhow::{Context, Result};
+use typed_builder::TypedBuilder;
 
 use crate::api::auth::{build_l2_headers, get_timestamp, get_zero_address};
 use crate::api::http_client::get_http_client;
@@ -13,23 +14,21 @@ use reqwest::header::*;
 
 use super::clob_endpoints::{CLOB_API, POST_ORDER};
 
-// Note: The following imports are commented out until the related functions are fully implemented
-// use crate::OpenOrder;
-// use crate::models::clob_orders::MarketOrders;
-// use super::clob_endpoints::ORDERS;
-// use crate::api::auth::add_param_to_url;
-
-/// Places a limit order on the Polymarket CLOB.
+/// Parameters for placing a limit order on the Polymarket CLOB.
 ///
-/// # Arguments
+/// # Required Fields
 ///
 /// * `signer` - The account to sign and place the order with
 /// * `price` - The price per share (0.0 to 1.0)
 /// * `size` - The size of the order in token quantity (number of shares)
 /// * `side` - Whether this is a buy or sell order
 /// * `token_id` - The token ID for the outcome
-/// * `order_type` - The type of order (FOK, FAK, GTC, or GTD)
-/// * `expiration` - Order expiration timestamp (required for GTD, must be 0 for others)
+///
+/// # Optional Fields (with defaults)
+///
+/// * `neg_risk` - Whether this is a neg-risk market (default: false)
+/// * `order_type` - The type of order (default: GTC)
+/// * `expiration` - Order expiration timestamp (default: 0, required non-zero for GTD orders)
 ///
 /// # Order Types
 ///
@@ -38,161 +37,173 @@ use super::clob_endpoints::{CLOB_API, POST_ORDER};
 /// * `GTC` (Good-Til-Cancelled) - Active until fulfilled or manually cancelled. Expiration must be 0.
 /// * `GTD` (Good-Til-Date) - Active until specified date. Expiration must be non-zero Unix timestamp.
 ///
-/// # Returns
-///
-/// Returns `Ok(String)` with the API response on success, or `Err(String)` with an error message on failure.
-///
-/// # Errors
-///
-/// Returns an error if:
-/// * Expiration is non-zero for FOK/FAK/GTC orders
-/// * Expiration is zero for GTD orders
-///
 /// # Example
 ///
 /// ```no_run
-/// use poly_clob_rs::{Account, Side, OrderType, api::order_requests::place_limit_order};
+/// use poly_clob_rs::{Account, Side, OrderType, api::order_requests::LimitOrderRequest};
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let account = Account::load_poly_account()?;
 ///
-/// // FOK order (expiration must be 0)
-/// let result = place_limit_order(
-///     &account,
-///     0.52,
-///     10.0,
-///     Side::Buy,
-///     false,
-///     "1234567890",
-///     OrderType::FOK,
-///     0
-/// ).await?;
+/// // Simple GTC order with defaults
+/// let request = LimitOrderRequest::builder()
+///     .signer(&account)
+///     .price(0.52)
+///     .size(10.0)
+///     .side(Side::Buy)
+///     .token_id("1234567890")
+///     .build();
 ///
-/// // GTD order (expiration must be non-zero)
-/// let expiration_time = 1735689600; // Some future timestamp
-/// let result = place_limit_order(
-///     &account,
-///     0.52,
-///     10.0,
-///     Side::Buy,
-///     false,
-///     "1234567890",
-///     OrderType::GTD,
-///     expiration_time
-/// ).await?;
+/// // GTD order with explicit expiration
+/// let request = LimitOrderRequest::builder()
+///     .signer(&account)
+///     .price(0.52)
+///     .size(10.0)
+///     .side(Side::Buy)
+///     .token_id("1234567890")
+///     .order_type(OrderType::GTD)
+///     .expiration(1735689600)
+///     .build();
 ///
-/// println!("Order placed: {}", result);
+/// let result = request.execute().await?;
 /// # Ok(())
 /// # }
 /// ```
-pub async fn place_limit_order(
-    signer: &Account,
-    price: f64,
-    size: f64,
-    side: Side,
-    neg_risk: bool,
-    token_id: &str,
-    order_type: OrderType,
-    expiration: i64,
-) -> Result<String> {
-    // Validate expiration based on order type
-    match order_type {
-        OrderType::GTD => {
-            anyhow::ensure!(
-                expiration != 0,
-                "GTD orders require a non-zero expiration timestamp"
+#[derive(TypedBuilder)]
+pub struct LimitOrderRequest<'a> {
+    /// The account to sign and place the order with
+    pub signer: &'a Account,
+    /// The price per share (0.0 to 1.0)
+    pub price: f64,
+    /// The size of the order in token quantity (number of shares)
+    pub size: f64,
+    /// Whether this is a buy or sell order
+    pub side: Side,
+    /// The token ID for the outcome
+    #[builder(setter(into))]
+    pub token_id: &'a str,
+    /// Whether this is a neg-risk market
+    #[builder(default = false)]
+    pub neg_risk: bool,
+    /// The type of order (FOK, FAK, GTC, or GTD)
+    #[builder(default = OrderType::GTC)]
+    pub order_type: OrderType,
+    /// Order expiration timestamp (required for GTD, must be 0 for others)
+    #[builder(default = 0)]
+    pub expiration: i64,
+}
+
+impl<'a> LimitOrderRequest<'a> {
+    /// Executes the limit order request.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(String)` with the API response on success, or an error on failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// * Expiration is non-zero for FOK/FAK/GTC orders
+    /// * Expiration is zero for GTD orders
+    /// * The HTTP request fails
+    /// * The API returns an error response
+    pub async fn execute(&self) -> Result<String> {
+        // Validate expiration based on order type
+        match self.order_type {
+            OrderType::GTD => {
+                anyhow::ensure!(
+                    self.expiration != 0,
+                    "GTD orders require a non-zero expiration timestamp"
+                );
+            }
+            OrderType::FOK | OrderType::FAK | OrderType::GTC => {
+                anyhow::ensure!(
+                    self.expiration == 0,
+                    "{} orders must have expiration set to 0",
+                    self.order_type
+                );
+            }
+        }
+
+        let client = get_http_client();
+
+        let method = "POST";
+        let request_path = POST_ORDER;
+
+        let callable_url = format!("{}{}", CLOB_API, request_path);
+
+        // Polymarket API precision requirements:
+        // - For BUY orders: maker_amount (USDC) max 4 decimals, taker_amount (tokens) max 2 decimals
+        // - For SELL orders: maker_amount (tokens) max 2 decimals, taker_amount (USDC) max 4 decimals
+        // USDC precision: 4 decimals (10^4 = 10000), Token precision: 2 decimals (10^2 = 100)
+        // Both are converted to raw units (10^6) for the API
+        //
+        // Note: size parameter represents token quantity (number of shares) for both BUY and SELL
+
+        let (maker_amount, taker_amount) = if self.side == Side::Buy {
+            // BUY: giving USDC (maker), receiving tokens (taker)
+            // maker_amount = size × price (USDC with 4 decimal precision)
+            // taker_amount = size (tokens with 2 decimal precision)
+            let maker_amount = ((10000.0 * self.size * self.price).round() * 100.0).round() as i32;
+            let taker_amount = ((100.0 * self.size).round() * 10000.0).round() as i32;
+            (maker_amount, taker_amount)
+        } else {
+            // SELL: giving tokens (maker), receiving USDC (taker)
+            // maker_amount = size (tokens with 2 decimal precision)
+            // taker_amount = size × price (USDC with 4 decimal precision)
+            let maker_amount = ((100.0 * self.size).round() * 10000.0).round() as i32;
+            let taker_amount = ((10000.0 * self.size * self.price).round() * 100.0).round() as i32;
+            (maker_amount, taker_amount)
+        };
+
+        let order = Order::builder()
+            .maker(&self.signer.poly_address)
+            .signer(&self.signer.pub_key)
+            .taker(get_zero_address())
+            .token_id(self.token_id)
+            .maker_amount(maker_amount)
+            .taker_amount(taker_amount)
+            .expiration(self.expiration)
+            .side(self.side)
+            .neg_risk(self.neg_risk)
+            .order_type(self.order_type)
+            .build();
+
+        let salt = get_timestamp();
+        let nonce = 0; // Nonce for order signing
+        let body = order.build_order_query_body(
+            salt.as_str(),
+            nonce,
+            self.signer.api_key.as_str(),
+            self.signer.private_key.as_str(),
+        )?;
+
+        let l2_headers = build_l2_headers(self.signer, method, request_path, &body, &salt)?;
+
+        log::debug!("Signed Order body: {}", &body);
+
+        let response = client
+            .post(&callable_url)
+            .header(CONTENT_TYPE, "application/json")
+            .header(ACCEPT, "application/json")
+            .headers(l2_headers)
+            .body(body)
+            .send()
+            .await
+            .context("HTTP request failed")?;
+
+        log::trace!("API Call Raw Response: {:?}", response);
+
+        // Log order side for debugging
+        if !response.status().is_success() {
+            log::error!(
+                "Error encountered while posting {} order",
+                order.side.to_lowercase_str()
             );
         }
-        OrderType::FOK | OrderType::FAK | OrderType::GTC => {
-            anyhow::ensure!(
-                expiration == 0,
-                "{} orders must have expiration set to 0",
-                order_type
-            );
-        }
+
+        handle_api_response(response, &callable_url).await
     }
-
-    let client = get_http_client();
-
-    let method = "POST";
-    let request_path = POST_ORDER;
-
-    let callable_url = format!("{}{}", CLOB_API, request_path);
-
-    // Polymarket API precision requirements:
-    // - For BUY orders: maker_amount (USDC) max 4 decimals, taker_amount (tokens) max 2 decimals
-    // - For SELL orders: maker_amount (tokens) max 2 decimals, taker_amount (USDC) max 4 decimals
-    // USDC precision: 4 decimals (10^4 = 10000), Token precision: 2 decimals (10^2 = 100)
-    // Both are converted to raw units (10^6) for the API
-    //
-    // Note: size parameter represents token quantity (number of shares) for both BUY and SELL
-
-    let (maker_amount, taker_amount) = if side == Side::Buy {
-        // BUY: giving USDC (maker), receiving tokens (taker)
-        // maker_amount = size × price (USDC with 4 decimal precision)
-        // taker_amount = size (tokens with 2 decimal precision)
-        let maker_amount = ((10000.0 * size * price).round() * 100.0).round() as i32;
-        let taker_amount = ((100.0 * size).round() * 10000.0).round() as i32;
-        (maker_amount, taker_amount)
-    } else {
-        // SELL: giving tokens (maker), receiving USDC (taker)
-        // maker_amount = size (tokens with 2 decimal precision)
-        // taker_amount = size × price (USDC with 4 decimal precision)
-        let maker_amount = ((100.0 * size).round() * 10000.0).round() as i32;
-        let taker_amount = ((10000.0 * size * price).round() * 100.0).round() as i32;
-        (maker_amount, taker_amount)
-    };
-
-    let fee_rate_bps = 0;
-
-    let order = Order::new(
-        signer.poly_address.as_str(),
-        signer.pub_key.as_str(),
-        &get_zero_address(),
-        token_id,
-        maker_amount,
-        taker_amount,
-        expiration,
-        fee_rate_bps,
-        side,
-        neg_risk,
-        order_type,
-    );
-
-    let salt = get_timestamp();
-    let nonce = 0; // Nonce for order signing
-    let body = order.build_order_query_body(
-        salt.as_str(),
-        nonce,
-        signer.api_key.as_str(),
-        signer.private_key.as_str(),
-    )?;
-
-    let l2_headers = build_l2_headers(signer, method, request_path, &body, &salt)?;
-
-    log::debug!("Signed Order body: {}", &body);
-
-    let response = client
-        .post(&callable_url)
-        .header(CONTENT_TYPE, "application/json")
-        .header(ACCEPT, "application/json")
-        .headers(l2_headers)
-        .body(body)
-        .send()
-        .await
-        .context("HTTP request failed")?;
-
-    log::trace!("API Call Raw Response: {:?}", response);
-
-    // Log order side for debugging
-    if !response.status().is_success() {
-        log::error!(
-            "Error encountered while posting {} order",
-            order.side.to_lowercase_str()
-        );
-    }
-
-    handle_api_response(response, &callable_url).await
 }
 
 /// Returns all open orders for the given account.

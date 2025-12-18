@@ -34,19 +34,16 @@
 //! use poly_clob_rs::{Account, Order, Side, OrderType};
 //!
 //! let account = Account::load_poly_account().expect("failed to load account");
-//! let order = Order::new(
-//!     &account.poly_address,
-//!     &account.poly_address,
-//!     "0x0000000000000000000000000000000000000000",
-//!     "token_id",
-//!     100,
-//!     50,
-//!     9999999999,
-//!     10,
-//!     Side::Buy,
-//!     false,
-//!     OrderType::GTC,
-//! );
+//! let order = Order::builder()
+//!     .maker(&account.poly_address)
+//!     .signer(&account.poly_address)
+//!     .taker("0x0000000000000000000000000000000000000000")
+//!     .token_id("token_id")
+//!     .maker_amount(100)
+//!     .taker_amount(50)
+//!     .side(Side::Buy)
+//!     .order_type(OrderType::GTC)
+//!     .build();
 //! ```
 
 pub mod account;
