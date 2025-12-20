@@ -12,7 +12,7 @@ use crate::models::{Account, Order, OrderType, Side};
 use crate::{market_requests, MarketOrders, OpenOrder, WebserviceRequest, ORDERS};
 use reqwest::header::*;
 
-use super::clob_endpoints::{CLOB_API, POST_ORDER};
+use super::clob_endpoints::{CLOB_API, CANCEL, POST_ORDER};
 
 /// Parameters for placing a limit order on the Polymarket CLOB.
 ///
@@ -203,6 +203,91 @@ impl<'a> LimitOrderRequest<'a> {
             log::error!(
                 "Error encountered while posting {} order",
                 order.side.to_lowercase_str()
+            );
+        }
+
+        handle_api_response(response, &callable_url).await
+    }
+}
+
+/// Parameters for canceling an order on the Polymarket CLOB.
+///
+/// # Required Fields
+///
+/// * `signer` - The account that placed the order
+/// * `order_id` - The ID of the order to cancel
+///
+/// # Example
+///
+/// ```no_run
+/// use poly_clob_rs::{Account, api::order_requests::CancelOrderRequest};
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let account = Account::load_poly_account()?;
+///
+/// let request = CancelOrderRequest::builder()
+///     .signer(&account)
+///     .order_id("order_12345")
+///     .build();
+///
+/// let result = request.execute().await?;
+/// # Ok(())
+/// # }
+/// ```
+#[derive(TypedBuilder)]
+pub struct CancelOrderRequest<'a> {
+    /// The account that placed the order
+    pub signer: &'a Account,
+    /// The ID of the order to cancel
+    #[builder(setter(into))]
+    pub order_id: &'a str,
+}
+
+impl<'a> CancelOrderRequest<'a> {
+    /// Executes the cancel order request.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(String)` with the API response on success, or an error on failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// * The HTTP request fails
+    /// * The API returns an error response
+    pub async fn execute(&self) -> Result<String> {
+        let client = get_http_client();
+
+        let method = "DELETE";
+        let request_path = CANCEL;
+
+        let callable_url = format!("{}{}", CLOB_API, request_path);
+
+        // Build request body with orderID
+        let body = format!(r#"{{"orderID":"{}"}}"#, self.order_id);
+
+        let salt = get_timestamp();
+        let l2_headers = build_l2_headers(self.signer, method, request_path, &body, &salt)?;
+
+        log::debug!("Canceling order: {}", self.order_id);
+        log::debug!("Cancel request body: {}", &body);
+
+        let response = client
+            .delete(&callable_url)
+            .header(CONTENT_TYPE, "application/json")
+            .header(ACCEPT, "application/json")
+            .headers(l2_headers)
+            .body(body)
+            .send()
+            .await
+            .context("HTTP request failed")?;
+
+        log::trace!("API Call Raw Response: {:?}", response);
+
+        if !response.status().is_success() {
+            log::error!(
+                "Error encountered while canceling order {}",
+                self.order_id
             );
         }
 
