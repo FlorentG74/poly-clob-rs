@@ -136,7 +136,7 @@ impl<'a> LimitOrderRequest<'a> {
             }
         }
 
-        let client = get_http_client();
+        let client = get_http_client(Some(CLOB_API));
 
         let method = "POST";
         let request_path = POST_ORDER;
@@ -275,7 +275,7 @@ impl<'a> CancelOrderRequest<'a> {
     /// * The HTTP request fails
     /// * The API returns an error response
     pub async fn execute(&self) -> Result<String> {
-        let client = get_http_client();
+        let client = get_http_client(Some(CLOB_API));
 
         let method = "DELETE";
         let request_path = CANCEL;
@@ -332,7 +332,7 @@ pub async fn get_open_orders_by_market(signer: &Account, market_id: &str) -> Res
 
 /// Fetches raw orders from the CLOB API.
 async fn fetch_raw_orders(signer: &Account, market_id: &str) -> Result<MarketOrders> {
-    let client = get_http_client();
+    let client = get_http_client(Some(CLOB_API));
 
     let method = "GET";
     let request_path = ORDERS;

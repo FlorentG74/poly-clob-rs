@@ -5,7 +5,7 @@
 use anyhow::{Context, Result};
 
 use crate::api::auth::build_l2_headers;
-use crate::api::http_client::get_http_client;
+use crate::api::http_client::get_default_http_client;
 use crate::api::response_handler::handle_api_response;
 use crate::models::{Account, AssetType};
 use crate::WebserviceRequest;
@@ -31,7 +31,7 @@ pub async fn get_balance_allowance(
     token_id: &str,
     signature_type: i32,
 ) -> Result<String> {
-    let client = get_http_client();
+    let client = get_http_client(Some(CLOB_API));
 
     let method = "GET";
     let request_path = GET_BALANCE_ALLOWANCE;
@@ -71,7 +71,7 @@ pub async fn get_balance_allowance(
 ///
 /// Returns `Ok(String)` with the API response on success, or an error on failure.
 pub async fn get_api_key(signer: &Account, signature_type: i32) -> Result<String> {
-    let client = get_http_client();
+    let client = get_http_client(Some(CLOB_API));
 
     let method = "GET";
     let request_path = GET_API_KEYS;

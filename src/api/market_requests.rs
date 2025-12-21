@@ -90,7 +90,7 @@ pub async fn load_markets_by_condition_ids(
     condition_ids: &[String],
     next_offset: i32,
 ) -> Result<MarketsResponse> {
-    let client = get_http_client();
+    let client = get_http_client(None);
 
     let mut web_service_request = WebserviceRequest::new_markets_ws_request();
     web_service_request.with_condition_ids(condition_ids);
@@ -106,7 +106,7 @@ pub async fn load_markets_by_condition_ids(
 }
 
 pub async fn fetch_market_by_slug(slug: &str) -> Result<PolyResponseMarket> {
-    let client = get_http_client();
+    let client = get_http_client(None);
 
     let mut web_service_request = WebserviceRequest::new_markets_ws_request();
     web_service_request.with_slug(slug);

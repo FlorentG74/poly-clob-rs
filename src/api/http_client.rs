@@ -1,25 +1,56 @@
 //! Shared HTTP client for all API requests.
 //!
-//! This module provides a global HTTP client singleton for connection pooling and resource efficiency.
+//! This module provides HTTP client singletons for efficient connection pooling and
+//! optional split tunneling support for CLOB API requests.
+//!
+//! # Split Tunneling
+//!
+//! Configure split tunneling by setting the `SPLIT_TUNNEL_IFACE` environment variable
+//! to the network interface name (e.g., `wg0`, `eth1`). This routes
+//! all CLOB API requests through the specified interface while other requests use the
+//! default system routing.
 
 use reqwest::Client;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-/// Global HTTP client singleton.
+use crate::CLOB_API;
+
+/// Default HTTP client singleton for non-CLOB requests.
 ///
-/// Uses connection pooling for efficient resource usage across all API requests.
+/// Uses connection pooling for efficient resource usage and default system routing.
 static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
 
-/// Returns a shared HTTP client instance.
+/// CLOB API HTTP client singleton with optional split tunneling.
 ///
-/// The client is lazily initialized on first use with:
+/// Uses connection pooling and an optional network interface binding configured via
+/// the `SPLIT_TUNNEL_IFACE` environment variable.
+static CLOB_HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
+
+/// Returns a shared HTTP client instance appropriate for the given endpoint.
+///
+/// Automatically selects the client based on the endpoint URL:
+/// - Requests to `CLOB_API` use the split-tunneling-capable CLOB client
+/// - All other requests use the default client
+///
+/// Both clients are lazily initialized on first use with:
 /// - 10 max idle connections per host
 /// - 30 second request timeout
 ///
+/// # Arguments
+///
+/// * `endpoint` - Optional API endpoint URL. If present and starts with the CLOB API
+///   base URL, the CLOB-specific client is used; otherwise the default client is used.
+///
+/// # Environment Variables
+///
+/// * `SPLIT_TUNNEL_IFACE` - Network interface name for split tunneling CLOB requests
+///   (e.g., `wg0`). If not set, CLOB requests use default routing.
+///   Only meaningful when endpoint is `CLOB_API`.
+///
 /// # Panics
 ///
-/// Panics if the client cannot be created (extremely unlikely in practice).
+/// Panics if either HTTP client cannot be created (extremely unlikely in practice).
 ///
 /// # Example
 ///
@@ -27,17 +58,40 @@ static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
 /// use poly_clob_rs::api::http_client::get_http_client;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let client = get_http_client();
-/// let response = client.get("https://api.example.com").send().await?;
+/// let client = get_http_client(Some("https://clob.polymarket.com/order"));
+/// let response = client.get("https://clob.polymarket.com/time").send().await?;
 /// # Ok(())
 /// # }
 /// ```
-pub fn get_http_client() -> &'static Client {
+pub fn get_http_client(endpoint: Option<&str>) -> &'static Client {
+    match endpoint {
+        Some(target) if target.starts_with(CLOB_API) => get_clob_http_client(),
+        _ => get_default_http_client(),
+    }
+}
+
+fn get_default_http_client() -> &'static Client {
     HTTP_CLIENT.get_or_init(|| {
         Client::builder()
             .pool_max_idle_per_host(10)
             .timeout(Duration::from_secs(30))
             .build()
-            .expect("failed to create HTTP client")
+            .expect("failed to create default HTTP client")
+    })
+}
+
+fn get_clob_http_client() -> &'static Client {
+    CLOB_HTTP_CLIENT.get_or_init(|| {
+        let mut builder = Client::builder()
+            .pool_max_idle_per_host(10)
+            .timeout(Duration::from_secs(30));
+
+        // Configure split tunneling if SPLIT_TUNNEL_IFACE environment variable is set
+        if let Ok(iface) = std::env::var("SPLIT_TUNNEL_IFACE") {
+            builder = builder.interface(&iface);
+        }
+
+        builder.build()
+            .expect("failed to create CLOB HTTP client")
     })
 }
