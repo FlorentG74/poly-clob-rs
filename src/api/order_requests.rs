@@ -3,6 +3,8 @@
 //! This module provides functions for placing and managing orders on the Polymarket CLOB.
 
 use anyhow::{Context, Result};
+use rust_decimal::Decimal;
+use rust_decimal::prelude::ToPrimitive;
 use typed_builder::TypedBuilder;
 
 use crate::api::auth::{build_l2_headers, get_timestamp, get_zero_address};
@@ -14,13 +16,16 @@ use reqwest::header::*;
 
 use super::clob_endpoints::{CLOB_API, CANCEL, POST_ORDER};
 
+/// Multiplier to convert decimal amounts to raw units (10^6) for the Polymarket API
+const RAW_UNIT_MULTIPLIER: i64 = 1_000_000;
+
 /// Parameters for placing a limit order on the Polymarket CLOB.
 ///
 /// # Required Fields
 ///
 /// * `signer` - The account to sign and place the order with
-/// * `price` - The price per share (0.0 to 1.0)
-/// * `size` - The size of the order in token quantity (number of shares)
+/// * `price` - The price per share (0.0 to 1.0) as Decimal with up to 4 decimal places
+/// * `size` - The size of the order in token quantity (number of shares) as Decimal
 /// * `side` - Whether this is a buy or sell order
 /// * `token_id` - The token ID for the outcome
 ///
@@ -42,6 +47,8 @@ use super::clob_endpoints::{CLOB_API, CANCEL, POST_ORDER};
 ///
 /// ```no_run
 /// use poly_clob_rs::{Account, Side, OrderType, api::order_requests::LimitOrderRequest};
+/// use rust_decimal::Decimal;
+/// use std::str::FromStr;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let account = Account::load_poly_account()?;
@@ -49,8 +56,8 @@ use super::clob_endpoints::{CLOB_API, CANCEL, POST_ORDER};
 /// // Simple GTC order with defaults
 /// let request = LimitOrderRequest::builder()
 ///     .signer(&account)
-///     .price(0.52)
-///     .size(10.0)
+///     .price(Decimal::from_str("0.52")?)
+///     .size(Decimal::from_str("10.0")?)
 ///     .side(Side::Buy)
 ///     .token_id("1234567890")
 ///     .build();
@@ -58,8 +65,8 @@ use super::clob_endpoints::{CLOB_API, CANCEL, POST_ORDER};
 /// // GTD order with explicit expiration
 /// let request = LimitOrderRequest::builder()
 ///     .signer(&account)
-///     .price(0.52)
-///     .size(10.0)
+///     .price(Decimal::from_str("0.52")?)
+///     .size(Decimal::from_str("10.0")?)
 ///     .side(Side::Buy)
 ///     .token_id("1234567890")
 ///     .order_type(OrderType::GTD)
@@ -74,10 +81,10 @@ use super::clob_endpoints::{CLOB_API, CANCEL, POST_ORDER};
 pub struct LimitOrderRequest<'a> {
     /// The account to sign and place the order with
     pub signer: &'a Account,
-    /// The price per share (0.0 to 1.0)
-    pub price: f64,
+    /// The price per share (0.0 to 1.0) with up to 4 decimal places
+    pub price: Decimal,
     /// The size of the order in token quantity (number of shares)
-    pub size: f64,
+    pub size: Decimal,
     /// Whether this is a buy or sell order
     pub side: Side,
     /// The token ID for the outcome
@@ -136,27 +143,39 @@ impl<'a> LimitOrderRequest<'a> {
 
         let callable_url = format!("{}{}", CLOB_API, request_path);
 
-        // Polymarket API precision requirements:
-        // - For BUY orders: maker_amount (USDC) max 4 decimals, taker_amount (tokens) max 2 decimals
-        // - For SELL orders: maker_amount (tokens) max 2 decimals, taker_amount (USDC) max 4 decimals
-        // USDC precision: 4 decimals (10^4 = 10000), Token precision: 2 decimals (10^2 = 100)
-        // Both are converted to raw units (10^6) for the API
-        //
+        // Polymarket API amounts are in raw units (10^6):
+        // - For BUY orders: maker_amount is USDC (price denominated), taker_amount is tokens
+        // - For SELL orders: maker_amount is tokens, taker_amount is USDC (price denominated)
+        // Using Decimal ensures exact arithmetic with no floating-point rounding errors.
         // Note: size parameter represents token quantity (number of shares) for both BUY and SELL
+
+        let raw_multiplier = Decimal::from(RAW_UNIT_MULTIPLIER);
 
         let (maker_amount, taker_amount) = if self.side == Side::Buy {
             // BUY: giving USDC (maker), receiving tokens (taker)
-            // maker_amount = size × price (USDC with 4 decimal precision)
-            // taker_amount = size (tokens with 2 decimal precision)
-            let maker_amount = ((10000.0 * self.size * self.price).round() * 100.0).round() as i32;
-            let taker_amount = ((100.0 * self.size).round() * 10000.0).round() as i32;
+            // maker_amount = size × price × 10^6 (raw USDC)
+            // taker_amount = size × 10^6 (raw tokens)
+            let maker_amount = (self.size * self.price * raw_multiplier)
+                .round()
+                .to_i32()
+                .expect("maker_amount overflow");
+            let taker_amount = (self.size * raw_multiplier)
+                .round()
+                .to_i32()
+                .expect("taker_amount overflow");
             (maker_amount, taker_amount)
         } else {
             // SELL: giving tokens (maker), receiving USDC (taker)
-            // maker_amount = size (tokens with 2 decimal precision)
-            // taker_amount = size × price (USDC with 4 decimal precision)
-            let maker_amount = ((100.0 * self.size).round() * 10000.0).round() as i32;
-            let taker_amount = ((10000.0 * self.size * self.price).round() * 100.0).round() as i32;
+            // maker_amount = size × 10^6 (raw tokens)
+            // taker_amount = size × price × 10^6 (raw USDC)
+            let maker_amount = (self.size * raw_multiplier)
+                .round()
+                .to_i32()
+                .expect("maker_amount overflow");
+            let taker_amount = (self.size * self.price * raw_multiplier)
+                .round()
+                .to_i32()
+                .expect("taker_amount overflow");
             (maker_amount, taker_amount)
         };
 
@@ -419,4 +438,88 @@ fn parse_market_order(
         expiration: order.expiration,
         order_type: order.order_type,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+
+    #[test]
+    fn test_buy_order_amount_calculation_with_exact_decimals() {
+        // Test: size=8.82, price=0.45 should produce maker_amount=3969000
+        // This reproduces the rounding issue from the error:
+        // "the maker amount for a $0.45 order of size 8.82 should be '3.969' but the value submited is '3.9692'"
+        let size = Decimal::from_str("8.82").unwrap();
+        let price = Decimal::from_str("0.45").unwrap();
+
+        let raw_multiplier = Decimal::from(RAW_UNIT_MULTIPLIER);
+        let expected_maker_amount = 3_969_000i32; // 8.82 * 0.45 * 1_000_000 = 3_969_000
+
+        let calculated_maker = (size * price * raw_multiplier)
+            .round()
+            .to_i32()
+            .expect("overflow");
+
+        assert_eq!(calculated_maker, expected_maker_amount,
+            "BUY order maker_amount calculation failed: expected {}, got {}",
+            expected_maker_amount, calculated_maker);
+    }
+
+    #[test]
+    fn test_buy_order_taker_amount_calculation() {
+        // Test: size=8.82 should produce taker_amount=8820000
+        let size = Decimal::from_str("8.82").unwrap();
+
+        let raw_multiplier = Decimal::from(RAW_UNIT_MULTIPLIER);
+        let expected_taker_amount = 8_820_000i32; // 8.82 * 1_000_000 = 8_820_000
+
+        let calculated_taker = (size * raw_multiplier)
+            .round()
+            .to_i32()
+            .expect("overflow");
+
+        assert_eq!(calculated_taker, expected_taker_amount,
+            "BUY order taker_amount calculation failed: expected {}, got {}",
+            expected_taker_amount, calculated_taker);
+    }
+
+    #[test]
+    fn test_sell_order_amounts_with_exact_decimals() {
+        // Test SELL: size=8.82, price=0.45
+        let size = Decimal::from_str("8.82").unwrap();
+        let price = Decimal::from_str("0.45").unwrap();
+
+        let raw_multiplier = Decimal::from(RAW_UNIT_MULTIPLIER);
+        let expected_maker_amount = 8_820_000i32; // tokens: 8.82 * 1_000_000
+        let expected_taker_amount = 3_969_000i32; // USDC: 8.82 * 0.45 * 1_000_000
+
+        let calculated_maker = (size * raw_multiplier)
+            .round()
+            .to_i32()
+            .expect("overflow");
+        let calculated_taker = (size * price * raw_multiplier)
+            .round()
+            .to_i32()
+            .expect("overflow");
+
+        assert_eq!(calculated_maker, expected_maker_amount, "SELL maker_amount mismatch");
+        assert_eq!(calculated_taker, expected_taker_amount, "SELL taker_amount mismatch");
+    }
+
+    #[test]
+    fn test_decimal_precision_no_float_errors() {
+        // Verify Decimal handles cases that would lose precision with f64
+        let problematic_price = Decimal::from_str("0.33").unwrap(); // 1/3 repeating
+        let size = Decimal::from_str("100").unwrap();
+
+        let raw_multiplier = Decimal::from(RAW_UNIT_MULTIPLIER);
+        let result = (size * problematic_price * raw_multiplier)
+            .round()
+            .to_i32()
+            .expect("overflow");
+
+        // 100 * 0.33 * 1_000_000 = 33_000_000
+        assert_eq!(result, 33_000_000);
+    }
 }

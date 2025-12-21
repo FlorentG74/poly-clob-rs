@@ -30,6 +30,7 @@ typed-builder = "0.20"
 alloy = { version = "0.5.4", features = ["dyn-abi", "signer-local"] }
 log = "0.4.22"
 anyhow = "1.0"
+rust_decimal = { version = "1.35", features = ["serde"] }
 diesel = { version = "2.2.5", features = ["postgres"], optional = true }
 
 [features]
