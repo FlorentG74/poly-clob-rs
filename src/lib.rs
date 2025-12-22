@@ -54,16 +54,22 @@
 //!
 //! ```rust,no_run
 //! use poly_clob_rs::{Account, Side, OrderType, api::order_requests::LimitOrderRequest};
+//! use rust_decimal::Decimal;
+//! use std::str::FromStr;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     let account = Account::load_poly_account()?;
 //!
 //!     // Simple order with defaults (GTC, expiration=0)
+//!     // Note: Polymarket API enforces precision limits:
+//!     // - USDC amounts (price × size): max 4 decimals
+//!     // - Token amounts (size): max 2 decimals
+//!     // The library automatically rounds to these limits.
 //!     let result = LimitOrderRequest::builder()
 //!         .signer(&account)
-//!         .price(0.52)
-//!         .size(10.0)
+//!         .price(Decimal::from_str("0.52")?)
+//!         .size(Decimal::from_str("10.0")?)
 //!         .side(Side::Buy)
 //!         .token_id("token_id")
 //!         .build()

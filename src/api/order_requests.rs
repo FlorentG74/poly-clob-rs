@@ -24,7 +24,7 @@ const RAW_UNIT_MULTIPLIER: i64 = 1_000_000;
 /// # Required Fields
 ///
 /// * `signer` - The account to sign and place the order with
-/// * `price` - The price per share (0.0 to 1.0) as Decimal with up to 4 decimal places
+/// * `price` - The price per share (0.0 to 1.0) as Decimal
 /// * `size` - The size of the order in token quantity (number of shares) as Decimal
 /// * `side` - Whether this is a buy or sell order
 /// * `token_id` - The token ID for the outcome
@@ -35,6 +35,16 @@ const RAW_UNIT_MULTIPLIER: i64 = 1_000_000;
 /// * `neg_risk` - Whether this is a neg-risk market (default: false)
 /// * `order_type` - The type of order (default: GTC)
 /// * `expiration` - Order expiration timestamp (default: 0, required non-zero for GTD orders)
+///
+/// # Precision Limits
+///
+/// The Polymarket API enforces strict decimal precision on order amounts:
+/// * **USDC amounts** (price × size): maximum 4 decimal places
+/// * **Token amounts** (size): maximum 2 decimal places
+///
+/// This library automatically rounds amounts to comply with these limits:
+/// * For BUY orders: maker_amount (USDC) is rounded to 4 decimals, taker_amount (tokens) to 2 decimals
+/// * For SELL orders: maker_amount (tokens) is rounded to 2 decimals, taker_amount (USDC) to 4 decimals
 ///
 /// # Order Types
 ///
@@ -151,29 +161,27 @@ impl<'a> LimitOrderRequest<'a> {
 
         let raw_multiplier = Decimal::from(RAW_UNIT_MULTIPLIER);
 
+        // Polymarket API precision requirements:
+        // - Token amounts (size): max 2 decimals
+        // - USDC amounts (size × price): max 4 decimals
+        // Important: Round size FIRST, then use rounded size for USDC calculation
+        let rounded_size = self.size.round_dp(2);
+
         let (maker_amount, taker_amount) = if self.side == Side::Buy {
             // BUY: giving USDC (maker), receiving tokens (taker)
-            // maker_amount = size × price × 10^6 (raw USDC)
-            // taker_amount = size × 10^6 (raw tokens)
-            let maker_amount = (self.size * self.price * raw_multiplier)
-                .round()
+            let maker_amount = ((rounded_size * self.price).round_dp(4) * raw_multiplier)
                 .to_i32()
                 .expect("maker_amount overflow");
-            let taker_amount = (self.size * raw_multiplier)
-                .round()
+            let taker_amount = (rounded_size * raw_multiplier)
                 .to_i32()
                 .expect("taker_amount overflow");
             (maker_amount, taker_amount)
         } else {
             // SELL: giving tokens (maker), receiving USDC (taker)
-            // maker_amount = size × 10^6 (raw tokens)
-            // taker_amount = size × price × 10^6 (raw USDC)
-            let maker_amount = (self.size * raw_multiplier)
-                .round()
+            let maker_amount = (rounded_size * raw_multiplier)
                 .to_i32()
                 .expect("maker_amount overflow");
-            let taker_amount = (self.size * self.price * raw_multiplier)
-                .round()
+            let taker_amount = ((rounded_size * self.price).round_dp(4) * raw_multiplier)
                 .to_i32()
                 .expect("taker_amount overflow");
             (maker_amount, taker_amount)
