@@ -66,8 +66,8 @@ const RAW_UNIT_MULTIPLIER: i64 = 1_000_000;
 /// // Simple GTC order with defaults
 /// let request = LimitOrderRequest::builder()
 ///     .signer(&account)
-///     .price(Decimal::from_str("0.52")?)
-///     .size(Decimal::from_str("10.0")?)
+///     .price(Decimal::from_f64(0.52_f64)?)
+///     .size(Decimal::from_f64(10.0_f64)?)
 ///     .side(Side::Buy)
 ///     .token_id("1234567890")
 ///     .build();
@@ -75,8 +75,8 @@ const RAW_UNIT_MULTIPLIER: i64 = 1_000_000;
 /// // GTD order with explicit expiration
 /// let request = LimitOrderRequest::builder()
 ///     .signer(&account)
-///     .price(Decimal::from_str("0.52")?)
-///     .size(Decimal::from_str("10.0")?)
+///     .price(Decimal::from_f64(0.52_f64)?)
+///     .size(Decimal::from_f64(10.0_f64)?)
 ///     .side(Side::Buy)
 ///     .token_id("1234567890")
 ///     .order_type(OrderType::GTD)
@@ -450,16 +450,17 @@ fn parse_market_order(
 
 #[cfg(test)]
 mod tests {
+    use rust_decimal::prelude::FromPrimitive;
+
     use super::*;
-    use std::str::FromStr;
 
     #[test]
     fn test_buy_order_amount_calculation_with_exact_decimals() {
         // Test: size=8.82, price=0.45 should produce maker_amount=3969000
         // This reproduces the rounding issue from the error:
         // "the maker amount for a $0.45 order of size 8.82 should be '3.969' but the value submited is '3.9692'"
-        let size = Decimal::from_str("8.82").unwrap();
-        let price = Decimal::from_str("0.45").unwrap();
+        let size = Decimal::from_f64(8.82_f64).unwrap();
+        let price = Decimal::from_f64(0.45_f64).unwrap();
 
         let raw_multiplier = Decimal::from(RAW_UNIT_MULTIPLIER);
         let expected_maker_amount = 3_969_000i32; // 8.82 * 0.45 * 1_000_000 = 3_969_000
@@ -477,7 +478,7 @@ mod tests {
     #[test]
     fn test_buy_order_taker_amount_calculation() {
         // Test: size=8.82 should produce taker_amount=8820000
-        let size = Decimal::from_str("8.82").unwrap();
+        let size = Decimal::from_f64(8.82_f64).unwrap();
 
         let raw_multiplier = Decimal::from(RAW_UNIT_MULTIPLIER);
         let expected_taker_amount = 8_820_000i32; // 8.82 * 1_000_000 = 8_820_000
@@ -495,8 +496,8 @@ mod tests {
     #[test]
     fn test_sell_order_amounts_with_exact_decimals() {
         // Test SELL: size=8.82, price=0.45
-        let size = Decimal::from_str("8.82").unwrap();
-        let price = Decimal::from_str("0.45").unwrap();
+        let size = Decimal::from_f64(8.82_f64).unwrap();
+        let price = Decimal::from_f64(0.45_f64).unwrap();
 
         let raw_multiplier = Decimal::from(RAW_UNIT_MULTIPLIER);
         let expected_maker_amount = 8_820_000i32; // tokens: 8.82 * 1_000_000
@@ -518,8 +519,8 @@ mod tests {
     #[test]
     fn test_decimal_precision_no_float_errors() {
         // Verify Decimal handles cases that would lose precision with f64
-        let problematic_price = Decimal::from_str("0.33").unwrap(); // 1/3 repeating
-        let size = Decimal::from_str("100").unwrap();
+        let problematic_price = Decimal::from_f64(0.33_f64).unwrap(); // 1/3 repeating
+        let size = Decimal::from_f64(100_f64).unwrap();
 
         let raw_multiplier = Decimal::from(RAW_UNIT_MULTIPLIER);
         let result = (size * problematic_price * raw_multiplier)
