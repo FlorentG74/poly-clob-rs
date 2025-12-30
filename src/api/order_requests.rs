@@ -66,8 +66,8 @@ const RAW_UNIT_MULTIPLIER: i64 = 1_000_000;
 /// // Simple GTC order with defaults
 /// let request = LimitOrderRequest::builder()
 ///     .signer(&account)
-///     .price(Decimal::from_f64(0.52_f64)?)
-///     .size(Decimal::from_f64(10.0_f64)?)
+///     .price(Decimal::from_str("0.52")?)
+///     .size(Decimal::from_str("10.0")?)
 ///     .side(Side::Buy)
 ///     .token_id("1234567890")
 ///     .build();
@@ -75,8 +75,8 @@ const RAW_UNIT_MULTIPLIER: i64 = 1_000_000;
 /// // GTD order with explicit expiration
 /// let request = LimitOrderRequest::builder()
 ///     .signer(&account)
-///     .price(Decimal::from_f64(0.52_f64)?)
-///     .size(Decimal::from_f64(10.0_f64)?)
+///     .price(Decimal::from_str("0.52")?)
+///     .size(Decimal::from_str("10.0")?)
 ///     .side(Side::Buy)
 ///     .token_id("1234567890")
 ///     .order_type(OrderType::GTD)

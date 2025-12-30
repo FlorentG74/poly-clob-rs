@@ -68,8 +68,8 @@
 //!     // The library automatically rounds to these limits.
 //!     let result = LimitOrderRequest::builder()
 //!         .signer(&account)
-//!         .price(Decimal::from_f64("0.52_f64)?)
-//!         .size(Decimal::from_f64("10.0_f64)?)
+//!         .price(Decimal::from_str("0.52")?)
+//!         .size(Decimal::from_str("10.0")?)
 //!         .side(Side::Buy)
 //!         .token_id("token_id")
 //!         .build()
