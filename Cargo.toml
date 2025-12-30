@@ -14,23 +14,23 @@ categories = ["api-bindings", "web-programming::http-client", "cryptography::cry
 
 [dependencies]
 serde = { version = "^1.0", default-features = false, features = ["derive"] }
-reqwest = { version = "0.12.9", features = ["default-tls", "json"] }
+reqwest = { version = "0.12.28", features = ["default-tls", "json"] }
 futures = { version = "0.3" }
 serde_json = "1.0"
-tokio = { version = "1.40.0",  default-features = false, features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.48.0",  default-features = false, features = ["macros", "rt-multi-thread"] }
 dotenv = "0.15.0"
 hex = { version = "0.4.3" }
-chrono = { version = "0.4.38", features = ["serde"] }
-sha2 = { version = "0.10.8" }
+chrono = { version = "0.4.42", features = ["serde"] }
+sha2 = { version = "0.10.9" }
 hmac = "0.12.1"
 base64 = { version = "0.22.1" }
-strum_macros = "0.26.4"
-typed-builder = "0.20"
-alloy = { version = "0.5.4", features = ["dyn-abi", "signer-local"] }
-log = "0.4.22"
+strum_macros = "0.27.2"
+typed-builder = "0.23"
+alloy = { version = "1.2.1", features = ["dyn-abi", "signer-local"] }
+log = "0.4.29"
 anyhow = "1.0"
-rust_decimal = { version = "1.35", features = ["serde"] }
-diesel = { version = "2.2.5", features = ["postgres"], optional = true }
+rust_decimal = { version = "1.39", features = ["serde"] }
+diesel = { version = "2.3.5", features = ["postgres"], optional = true }
 
 [features]
 default = []
