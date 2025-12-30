@@ -38,6 +38,7 @@ pub mod order_requests;
 pub mod position_requests;
 pub mod price_requests;
 pub mod response_handler;
+pub mod settlement_requests;
 pub mod tag_requests;
 pub mod webservice_request;
 
@@ -45,4 +46,5 @@ pub use auth::*;
 pub use clob_endpoints::*;
 pub use market_requests::*;
 pub use order_requests::*;
+pub use settlement_requests::*;
 pub use webservice_request::*;
