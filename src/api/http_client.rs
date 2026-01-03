@@ -82,6 +82,7 @@ fn get_default_http_client() -> &'static Client {
 
 fn get_clob_http_client() -> &'static Client {
     CLOB_HTTP_CLIENT.get_or_init(|| {
+        #[allow(unused_mut)] // Mutability needed only if split tunneling is configured
         let mut builder = Client::builder()
             .pool_max_idle_per_host(10)
             .timeout(Duration::from_secs(30));
