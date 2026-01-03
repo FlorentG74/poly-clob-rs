@@ -43,5 +43,6 @@ pub static WITH_SLUG: &str = "/slug/";
 pub static GET_MARKET_TRADES_EVENTS: &str = "/live-activity/events/";
 pub static GET_TAGS: &str = "/tags";
 pub static POSITIONS: &str = "/positions";
+pub static ACTIVITY: &str = "/activity";
 pub static GET_EVENT_SERIES: &str = "/series";
 pub static GET_EVENTS: &str = "/events";

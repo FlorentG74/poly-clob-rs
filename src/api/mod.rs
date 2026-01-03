@@ -29,6 +29,7 @@
 //! ```
 
 pub mod auth;
+pub mod activity_requests;
 pub mod clob_endpoints;
 pub mod error;
 pub mod event_requests;
@@ -43,6 +44,7 @@ pub mod tag_requests;
 pub mod webservice_request;
 
 pub use auth::*;
+pub use activity_requests::*;
 pub use clob_endpoints::*;
 pub use market_requests::*;
 pub use order_requests::*;

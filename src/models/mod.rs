@@ -47,6 +47,7 @@
 //! ```
 
 pub mod account;
+pub mod activity;
 pub mod api_response;
 pub mod clob_orders;
 pub mod clob_types;
@@ -62,6 +63,7 @@ pub mod side;
 pub mod tag;
 
 pub use account::*;
+pub use activity::*;
 pub use api_response::*;
 pub use clob_orders::*;
 pub use clob_types::*;
