@@ -86,7 +86,19 @@ fn get_clob_http_client() -> &'static Client {
             .pool_max_idle_per_host(10)
             .timeout(Duration::from_secs(30));
 
-        // Configure split tunneling if SPLIT_TUNNEL_IFACE environment variable is set
+        // Configure split tunneling if SPLIT_TUNNEL_IFACE environment variable is set and we're on a supported platform
+        #[cfg(any(
+        target_os = "android",
+        target_os = "fuchsia",
+        target_os = "illumos",
+        target_os = "ios",
+        target_os = "linux",
+        target_os = "macos",
+        target_os = "solaris",
+        target_os = "tvos",
+        target_os = "visionos",
+        target_os = "watchos",
+        ))]
         if let Ok(iface) = std::env::var("SPLIT_TUNNEL_IFACE") {
             builder = builder.interface(&iface);
         }
