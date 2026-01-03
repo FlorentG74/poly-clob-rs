@@ -1,30 +1,44 @@
 use serde::{Serialize, Deserialize};
 
+use super::ApiResponse;
+
 pub type UserActivityResponse = Vec<UserActivity>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UserActivity {
-    proxy_wallet: String,
-    timestamp: i64,
-    condition_id: String,
+    pub proxy_wallet: String,
+    pub timestamp: i64,
+    pub condition_id: String,
     #[serde(rename = "type")]
-    welcome_type: String,
-    size: i64,
-    usdc_size: i64,
-    transaction_hash: String,
-    price: i64,
-    asset: String,
-    side: String,
-    outcome_index: i64,
-    title: String,
-    slug: String,
-    icon: String,
-    event_slug: String,
-    outcome: String,
-    name: String,
-    pseudonym: String,
-    bio: String,
-    profile_image: String,
-    profile_image_optimized: String,
+    pub welcome_type: String,
+    pub size: f64,
+    pub usdc_size: f64,
+    pub transaction_hash: String,
+    pub price: f64,
+    pub asset: String,
+    pub side: String,
+    pub outcome_index: i64,
+    pub title: String,
+    pub slug: String,
+    pub icon: String,
+    pub event_slug: String,
+    pub outcome: String,
+    pub name: String,
+    pub pseudonym: String,
+    pub bio: String,
+    pub profile_image: String,
+    pub profile_image_optimized: String,
+}
+
+impl ApiResponse for UserActivity {
+    fn nb_results(&self) -> usize {
+        1 // Single activity item
+    }
+}
+
+impl ApiResponse for UserActivityResponse {
+    fn nb_results(&self) -> usize {
+        self.len()
+    }
 }
