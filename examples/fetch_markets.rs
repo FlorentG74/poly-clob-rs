@@ -7,26 +7,22 @@
 //! cargo run --example fetch_markets
 //! ```
 
-use poly_clob_rs::{ApiResponse, MarketsResponse, WebserviceRequest};
+use poly_clob_rs::api::market_requests::MarketsRequest;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Fetching active markets from Polymarket...\n");
 
     // Create a request for active markets
-    let mut request = WebserviceRequest::new_markets_ws_request();
-    request.with_active_only();
+    let request = MarketsRequest::builder()
+        .closed(false)
+        .limit(100)
+        .build();
 
-    // Build the URL
-    let url = request.get_callable_url(0); // offset = 0
-    println!("Request URL: {}\n", url);
+    println!("Fetching markets...\n");
 
-    // Make the HTTP request
-    let client = reqwest::Client::new();
-    let response = client.get(&url).send().await?;
-
-    // Parse the response
-    let markets: MarketsResponse = response.json().await?;
+    // Execute the request
+    let markets = request.execute().await?;
     let count = markets.nb_results();
 
     println!("Found {} markets:\n", count);

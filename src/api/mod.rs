@@ -43,6 +43,25 @@ pub mod settlement_requests;
 pub mod tag_requests;
 pub mod webservice_request;
 
+/// Sort direction for requests (ascending or descending).
+#[derive(Debug, Clone, Copy)]
+pub enum SortDirection {
+    /// Ascending order
+    ASC,
+    /// Descending order
+    DESC,
+}
+
+impl SortDirection {
+    /// Returns the string representation for API requests.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SortDirection::ASC => "ASC",
+            SortDirection::DESC => "DESC",
+        }
+    }
+}
+
 pub use auth::*;
 pub use activity_requests::*;
 pub use clob_endpoints::*;

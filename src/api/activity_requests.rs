@@ -9,6 +9,7 @@ use typed_builder::TypedBuilder;
 use crate::api::http_client::get_http_client;
 use crate::models::{UserActivityResponse, UserActivity};
 
+pub use super::SortDirection;
 use super::{WebserviceRequest, ACTIVITY, DATA_API};
 
 /// Activity types for filtering user activity.
@@ -49,22 +50,6 @@ impl ActivitySortBy {
             ActivitySortBy::TIMESTAMP => "TIMESTAMP",
             ActivitySortBy::TOKENS => "TOKENS",
             ActivitySortBy::CASH => "CASH",
-        }
-    }
-}
-
-/// Sort direction for activity requests.
-#[derive(Debug, Clone, Copy)]
-pub enum SortDirection {
-    ASC,
-    DESC,
-}
-
-impl SortDirection {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            SortDirection::ASC => "ASC",
-            SortDirection::DESC => "DESC",
         }
     }
 }
