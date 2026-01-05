@@ -7,7 +7,7 @@
 //! cargo run --example fetch_markets
 //! ```
 
-use poly_clob_rs::api::market_requests::MarketsRequest;
+use poly_clob_rs::{ApiResponse, api::market_requests::MarketsRequest};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -15,7 +15,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a request for active markets
     let request = MarketsRequest::builder()
-        .closed(false)
+        .closed(Some(false))
         .limit(100)
         .build();
 
