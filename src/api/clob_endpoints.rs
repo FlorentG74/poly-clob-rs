@@ -15,6 +15,7 @@ pub static GET_ORDER: &str = "/data/order/";
 pub static ORDERS: &str = "/data/orders";
 pub static POST_ORDER: &str = "/order";
 pub static CANCEL: &str = "/order";
+pub const FEE_RATE: &str = "/fee-rate";
 pub static CANCEL_ORDERS: &str = "/orders";
 pub static CANCEL_ALL: &str = "/cancel-all";
 pub static CANCEL_MARKET_ORDERS: &str = "/cancel-market-orders";

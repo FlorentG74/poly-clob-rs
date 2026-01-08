@@ -11,7 +11,7 @@ use crate::api::auth::{build_l2_headers, get_timestamp, get_zero_address};
 use crate::api::http_client::get_http_client;
 use crate::api::response_handler::handle_api_response;
 use crate::models::{Account, Order, OrderType, Side};
-use crate::{market_requests, MarketOrders, OpenOrder, WebserviceRequest, ORDERS};
+use crate::{market_requests, MarketOrders, OpenOrder, WebserviceRequest, ORDERS, fee_requests};
 use reqwest::header::*;
 
 use super::clob_endpoints::{CLOB_API, CANCEL, POST_ORDER};
@@ -112,9 +112,9 @@ pub struct LimitOrderRequest<'a> {
     /// Order expiration timestamp (required for GTD, must be 0 for others)
     #[builder(default = 0)]
     pub expiration: i64,
-    /// Fee rate in basis points (e.g., 10 for 0.1%)
-    #[builder(default = 0)]
-    pub fee_rate_bps: i32,
+    /// Whether to fetch the fee rate from the API (default: false)
+    #[builder(default = false)]
+    pub with_fee: bool,
 }
 
 impl<'a> LimitOrderRequest<'a> {
@@ -190,6 +190,12 @@ impl<'a> LimitOrderRequest<'a> {
             (maker_amount, taker_amount)
         };
 
+        let fee_rate_bps = if self.with_fee {
+            fee_requests::get_fee_rate(self.token_id).await?.fee_rate_bps
+        } else {
+            0
+        };
+
         let order = Order::builder()
             .maker(&self.signer.poly_address)
             .signer(&self.signer.pub_key)
@@ -198,7 +204,7 @@ impl<'a> LimitOrderRequest<'a> {
             .maker_amount(maker_amount)
             .taker_amount(taker_amount)
             .expiration(self.expiration)
-            .fee_rate_bps(self.fee_rate_bps)
+            .fee_rate_bps(fee_rate_bps)
             .side(self.side)
             .neg_risk(self.neg_risk)
             .order_type(self.order_type)

@@ -33,6 +33,7 @@ pub mod activity_requests;
 pub mod clob_endpoints;
 pub mod error;
 pub mod event_requests;
+pub mod fee_requests;
 pub mod http_client;
 pub mod market_requests;
 pub mod order_requests;
@@ -65,6 +66,7 @@ impl SortDirection {
 pub use auth::*;
 pub use activity_requests::*;
 pub use clob_endpoints::*;
+pub use fee_requests::*;
 pub use market_requests::*;
 pub use order_requests::*;
 pub use settlement_requests::*;
