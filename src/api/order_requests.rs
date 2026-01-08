@@ -112,6 +112,9 @@ pub struct LimitOrderRequest<'a> {
     /// Order expiration timestamp (required for GTD, must be 0 for others)
     #[builder(default = 0)]
     pub expiration: i64,
+    /// Fee rate in basis points (e.g., 10 for 0.1%)
+    #[builder(default = 0)]
+    pub fee_rate_bps: i32,
 }
 
 impl<'a> LimitOrderRequest<'a> {
@@ -195,6 +198,7 @@ impl<'a> LimitOrderRequest<'a> {
             .maker_amount(maker_amount)
             .taker_amount(taker_amount)
             .expiration(self.expiration)
+            .fee_rate_bps(self.fee_rate_bps)
             .side(self.side)
             .neg_risk(self.neg_risk)
             .order_type(self.order_type)

@@ -234,6 +234,9 @@ mod tests {
     /// Helper macro to create a test order with common fields
     macro_rules! test_order {
         ($side:expr, $order_type:expr) => {
+            test_order!($side, $order_type, 0)
+        };
+        ($side:expr, $order_type:expr, $fee_rate_bps:expr) => {
             Order::builder()
                 .maker(TEST_MAKER)
                 .signer(TEST_MAKER)
@@ -243,6 +246,7 @@ mod tests {
                 .taker_amount(50)
                 .side($side)
                 .order_type($order_type)
+                .fee_rate_bps($fee_rate_bps)
                 .build()
         };
     }
