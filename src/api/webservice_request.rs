@@ -72,11 +72,17 @@ impl WebserviceRequest {
     ///
     /// ```rust,no_run
     /// use poly_clob_rs::{WebserviceRequest, MarketsResponse};
+    /// use reqwest::Method;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let client = reqwest::Client::new();
-    /// let mut request = WebserviceRequest::new_markets_ws_request();
-    /// request.with_active_only();
+    /// let request = WebserviceRequest {
+    ///     api: "https://gamma-api.polymarket.com".to_string(),
+    ///     url: "/markets".to_string(),
+    ///     method: Method::GET,
+    ///     args: vec![("active".to_string(), "true".to_string())],
+    ///     body: None,
+    /// };
     ///
     /// let (next_offset, markets) = WebserviceRequest::fetch_batch::<MarketsResponse>(&client, &request, 0).await;
     /// if let Some(data) = markets {
@@ -224,11 +230,17 @@ impl WebserviceRequest {
     ///
     /// ```rust,no_run
     /// use poly_clob_rs::{WebserviceRequest, PolyResponseMarket};
+    /// use reqwest::Method;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let client = reqwest::Client::new();
-    /// let mut request = WebserviceRequest::new_market_ws_request();
-    /// request.with_slug("bitcoin-above-100k");
+    /// let request = WebserviceRequest {
+    ///     api: "https://gamma-api.polymarket.com".to_string(),
+    ///     url: "/markets/slug/bitcoin-above-100k".to_string(),
+    ///     method: Method::GET,
+    ///     args: Vec::new(),
+    ///     body: None,
+    /// };
     ///
     /// let market = WebserviceRequest::fetch_one::<PolyResponseMarket>(&client, &request).await;
     /// if let Some(m) = market {

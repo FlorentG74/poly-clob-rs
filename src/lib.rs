@@ -14,11 +14,17 @@
 //!
 //! ```rust,no_run
 //! use poly_clob_rs::{WebserviceRequest, MarketsResponse};
+//! use reqwest::Method;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let mut request = WebserviceRequest::new_markets_ws_request();
-//!     request.with_active_only();
+//!     let request = WebserviceRequest {
+//!         api: "https://gamma-api.polymarket.com".to_string(),
+//!         url: "/markets".to_string(),
+//!         method: Method::GET,
+//!         args: vec![("active".to_string(), "true".to_string())],
+//!         body: None,
+//!     };
 //!
 //!     let url = request.get_callable_url(0);
 //!     let client = reqwest::Client::new();
@@ -45,7 +51,11 @@
 //!
 //!     let url = request.get_callable_url(0);
 //!     let client = reqwest::Client::new();
-//!     let prices: PolymarketPricesResponse = client.get(&url).send().await?.json().await?;
+//!     let prices: PolymarketPricesResponse = client.post(&url)
+//!         .header("Content-Type", "application/json")
+//!         .body(request.body.unwrap())
+//!         .send().await?
+//!         .json().await?;
 //!     Ok(())
 //! }
 //! ```

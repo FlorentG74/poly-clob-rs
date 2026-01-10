@@ -22,9 +22,15 @@
 //!
 //! ```rust
 //! use poly_clob_rs::WebserviceRequest;
+//! use reqwest::Method;
 //!
-//! let mut request = WebserviceRequest::new_markets_ws_request();
-//! request.with_active_only();
+//! let request = WebserviceRequest {
+//!     api: "https://gamma-api.polymarket.com".to_string(),
+//!     url: "/markets".to_string(),
+//!     method: Method::GET,
+//!     args: vec![("active".to_string(), "true".to_string())],
+//!     body: None,
+//! };
 //! let url = request.get_callable_url(0);
 //! ```
 

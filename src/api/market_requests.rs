@@ -28,8 +28,8 @@
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let markets = MarketsRequest::builder()
-//!     .closed(false)
-//!     .volume_num_min(1000.0)
+//!     .closed(Some(false))
+//!     .volume_num_min(Some(1000.0))
 //!     .limit(50)
 //!     .build()
 //!     .execute()
@@ -272,8 +272,8 @@ impl<'a> MarketBySlugRequest<'a> {
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let request = MarketsRequest::builder()
 ///     .limit(50)
-///     .closed(false)
-///     .volume_num_min(1000.0)
+///     .closed(Some(false))
+///     .volume_num_min(Some(1000.0))
 ///     .order("volume")
 ///     .ascending(false)
 ///     .build();
