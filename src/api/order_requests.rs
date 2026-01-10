@@ -229,6 +229,10 @@ impl<'a> LimitOrderRequest<'a> {
 
         log::debug!("Signed Order body: {}", &body);
 
+        // Validate order prior to sending
+        order.validate_order()?;
+
+        // Send the order placement request
         let response = client
             .post(&callable_url)
             .header(CONTENT_TYPE, "application/json")

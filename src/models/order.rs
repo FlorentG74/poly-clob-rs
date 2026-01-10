@@ -15,6 +15,8 @@ const NAME: &str = "Polymarket CTF Exchange";
 const VERSION: &str = "1";
 const CHAIN_ID: i32 = 137;
 
+const RAW_UNIT_MULTIPLIER: i32 = 1_000_000;
+
 // Non-Neg Risk markets
 const NON_NEG_RISK_VERIFYING_CONTRACT: Address =
     address!("4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E");
@@ -137,6 +139,15 @@ impl Order {
         };
 
         serde_json::to_string(&body).context("failed to serialize order query body")
+    }
+
+    pub fn validate_order(&self) -> Result<()> {
+        //for buy orders, token quantity should be > 5 and USD amount should be >= 1.0
+        if self.side == Side::Buy && (self.maker_amount <= 1 * RAW_UNIT_MULTIPLIER || self.taker_amount < 5 * RAW_UNIT_MULTIPLIER) {
+            anyhow::bail!("Invalid Buy Order: For buy orders, token quantity should be > 5 and USD amount should be >= 1.0");
+        }
+
+        Ok(())
     }
 }
 
