@@ -191,7 +191,13 @@ impl<'a> LimitOrderRequest<'a> {
         };
 
         let fee_rate_bps = if self.with_fee {
-            fee_requests::get_fee_rate(self.token_id).await?.base_fee
+            match fee_requests::get_fee_rate(self.token_id).await {
+                Ok(rate) => rate.base_fee,
+                Err(e) => {
+                    log::error!("Failed to fetch fee rate; using 0 as default: {}", e);
+                    0
+                },
+            }
         } else {
             0
         };
