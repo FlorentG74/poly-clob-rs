@@ -1,3 +1,4 @@
+use crate::api::relayer::SignatureType;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +21,18 @@ pub struct Account {
     pub account_type: AccountType,
     pub telegram_chat_id: Option<i64>,
     pub telegram_bot_token: Option<String>,
+    /// Builder API key for relayer transactions (POLY_BUILDER_API_KEY).
+    #[serde(default)]
+    pub builder_api_key: Option<String>,
+    /// Builder API secret for relayer transactions (POLY_BUILDER_API_SECRET).
+    #[serde(default)]
+    pub builder_api_secret: Option<String>,
+    /// Builder API passphrase for relayer transactions (POLY_BUILDER_API_PASSPHRASE).
+    #[serde(default)]
+    pub builder_api_passphrase: Option<String>,
+    /// Wallet/Signature type: EOA (0), POLY_PROXY (1), or GNOSIS_SAFE (2).
+    #[serde(default)]
+    pub signature_type: SignatureType,
 }
 
 /// Telegram configuration loaded from environment variables.
@@ -53,6 +66,17 @@ impl Account {
 
         let telegram = load_telegram_config();
 
+        // Load builder credentials (optional)
+        let builder_api_key = env::var("POLY_BUILDER_API_KEY").ok();
+        let builder_api_secret = env::var("POLY_BUILDER_API_SECRET").ok();
+        let builder_api_passphrase = env::var("POLY_BUILDER_API_PASSPHRASE").ok();
+
+        // Load signature type (defaults to POLY_PROXY for backwards compatibility)
+        let signature_type = env::var("SIGNATURE_TYPE")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(SignatureType::PolyProxy);
+
         Ok(Account {
             poly_address: env::var("POLY_ADDRESS").context("missing POLY_ADDRESS env var")?,
             pub_key: env::var("PUB_KEY").context("missing PUB_KEY env var")?,
@@ -63,6 +87,10 @@ impl Account {
             account_type: AccountType::PolymarketAccount,
             telegram_chat_id: telegram.chat_id,
             telegram_bot_token: telegram.bot_token,
+            builder_api_key,
+            builder_api_secret,
+            builder_api_passphrase,
+            signature_type,
         })
     }
 
@@ -83,6 +111,10 @@ impl Account {
             account_type: AccountType::PaperAccount,
             telegram_chat_id: telegram.chat_id,
             telegram_bot_token: telegram.bot_token,
+            builder_api_key: None,
+            builder_api_secret: None,
+            builder_api_passphrase: None,
+            signature_type: SignatureType::PolyProxy,
         }
     }
 
@@ -103,6 +135,24 @@ impl Account {
             account_type: AccountType::BinanceAccount,
             telegram_chat_id: telegram.chat_id,
             telegram_bot_token: telegram.bot_token,
+            builder_api_key: None,
+            builder_api_secret: None,
+            builder_api_passphrase: None,
+            signature_type: SignatureType::PolyProxy,
+        }
+    }
+
+    /// Returns builder credentials if all required fields are present.
+    pub fn get_builder_credentials(&self) -> Option<crate::api::relayer::BuilderCredentials> {
+        match (&self.builder_api_key, &self.builder_api_secret, &self.builder_api_passphrase) {
+            (Some(key), Some(secret), Some(passphrase)) => {
+                Some(crate::api::relayer::BuilderCredentials::new(
+                    key.clone(),
+                    secret.clone(),
+                    passphrase.clone(),
+                ))
+            }
+            _ => None,
         }
     }
 }
