@@ -8,8 +8,8 @@ use rust_decimal::prelude::ToPrimitive;
 use typed_builder::TypedBuilder;
 
 use crate::api::auth::{build_l2_headers, get_timestamp, get_zero_address};
-use crate::api::http_client::get_http_client;
 use crate::api::response_handler::handle_api_response;
+use crate::http_client::get_http_client;
 use crate::models::{Account, Order, OrderType, Side};
 use crate::{market_requests, MarketOrders, OpenOrder, WebserviceRequest, ORDERS, fee_requests};
 use reqwest::header::*;
@@ -191,7 +191,7 @@ impl<'a> LimitOrderRequest<'a> {
         };
 
         let fee_rate_bps = if self.with_fee {
-            fee_requests::get_fee_rate(self.token_id).await?.fee_rate_bps
+            fee_requests::get_fee_rate(self.token_id).await?.base_fee
         } else {
             0
         };
@@ -231,15 +231,19 @@ impl<'a> LimitOrderRequest<'a> {
             .body(body)
             .send()
             .await
-            .context("HTTP request failed")?;
+            .context(format!("Failed to send POST order request to {}", callable_url))?;
 
         log::trace!("API Call Raw Response: {:?}", response);
 
+        let status = response.status();
+        log::debug!("Order response status: {}", status);
+
         // Log order side for debugging
-        if !response.status().is_success() {
+        if !status.is_success() {
             log::error!(
-                "Error encountered while posting {} order",
-                order.side.to_lowercase_str()
+                "Error encountered while posting {} order: HTTP status {}",
+                order.side.to_lowercase_str(),
+                status
             );
         }
 

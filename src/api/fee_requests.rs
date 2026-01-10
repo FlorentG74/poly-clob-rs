@@ -1,106 +1,43 @@
 //! Fee rate request.
 use anyhow::{Context, Result};
 use serde::Deserialize;
-use reqwest::Client;
-use std::time::Duration;
-use tokio::time::sleep;
+use reqwest::Method;
 
 use crate::api::clob_endpoints::{CLOB_API, FEE_RATE};
+use crate::api::http_client::get_http_client;
+use crate::api::webservice_request::WebserviceRequest;
+use crate::models::ApiResponse;
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct FeeRate {
     /// Base fee in basis points (bps)
-    /// API returns this as 'base_fee'
     #[serde(rename = "base_fee")]
-    pub fee_rate_bps: i32,
+    pub base_fee: i32,
+}
+
+impl ApiResponse for FeeRate {
+    fn nb_results(&self) -> usize {
+        1
+    }
 }
 
 /// Fetches the fee rate for a given token ID.
-/// Creates a fresh client for each request to avoid connection pool issues.
 pub async fn get_fee_rate(token_id: &str) -> Result<FeeRate> {
-    const MAX_RETRIES: u32 = 3;
-    const RETRY_DELAY_MS: u64 = 500;
+    let client = get_http_client(Some(CLOB_API));
 
-    for attempt in 1..=MAX_RETRIES {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(10))
-            .build()
-            .context("Failed to create HTTP client")?;
+    let mut request = WebserviceRequest {
+        api: CLOB_API.to_string(),
+        url: FEE_RATE.to_string(),
+        method: Method::GET,
+        args: Vec::new(),
+        body: None,
+    };
+    request.add_arg("token_id".to_string(), token_id.to_string());
 
-        let url = format!("{}{}?token_id={}", CLOB_API, FEE_RATE, token_id);
-
-        log::debug!(
-            "Fetching fee rate for token_id: {} (attempt {}/{})",
-            token_id,
-            attempt,
-            MAX_RETRIES
-        );
-
-        match client.get(&url).send().await {
-            Ok(response) => {
-                match response.status() {
-                    reqwest::StatusCode::OK => {
-                        let fee_rate: FeeRate = response.json().await
-                            .context("Failed to parse fee rate response")?;
-                        return Ok(fee_rate);
-                    }
-                    status @ (reqwest::StatusCode::TOO_MANY_REQUESTS
-                    | reqwest::StatusCode::GATEWAY_TIMEOUT
-                    | reqwest::StatusCode::BAD_GATEWAY
-                    | reqwest::StatusCode::INTERNAL_SERVER_ERROR) => {
-                        if attempt < MAX_RETRIES {
-                            log::warn!(
-                                "Fee rate request got {} status - retrying after {} ms (attempt {}/{})",
-                                status,
-                                RETRY_DELAY_MS,
-                                attempt,
-                                MAX_RETRIES
-                            );
-                            sleep(Duration::from_millis(RETRY_DELAY_MS)).await;
-                            continue;
-                        } else {
-                            return Err(anyhow::anyhow!("Fee rate request failed with status {}: {}", status, response.text().await.unwrap_or_default()));
-                        }
-                    }
-                    other => {
-                        return Err(anyhow::anyhow!("Unexpected status code from fee rate API: {}", other));
-                    }
-                }
-            }
-            Err(err) => {
-                let is_timeout = err.is_timeout();
-                let is_connect = err.is_connect();
-
-                if (is_timeout || is_connect) && attempt < MAX_RETRIES {
-                    log::warn!(
-                        "Fee rate request failed (timeout: {}, connect: {}) - retrying after {} ms (attempt {}/{})",
-                        is_timeout,
-                        is_connect,
-                        RETRY_DELAY_MS,
-                        attempt,
-                        MAX_RETRIES
-                    );
-                    sleep(Duration::from_millis(RETRY_DELAY_MS)).await;
-                    continue;
-                } else {
-                    log::error!(
-                        "Fee rate request failed after {} attempts for token_id {}: {}",
-                        attempt,
-                        token_id,
-                        err
-                    );
-                    return Err(err).context(format!(
-                        "Failed to send fee rate request for token_id {} after {} attempts",
-                        token_id,
-                        attempt
-                    ));
-                }
-            }
-        }
-    }
-
-    unreachable!()
+    WebserviceRequest::fetch_one::<FeeRate>(client, &request)
+        .await
+        .context("Failed to fetch fee rate")
 }
 
 #[cfg(test)]
@@ -136,8 +73,8 @@ mod tests {
                                     match get_fee_rate(first_token_id).await {
                                         Ok(fee_rate) => {
                                             println!("✓ Successfully fetched fee rate: {:?}", fee_rate);
-                                            println!("  Fee Rate BPS: {}", fee_rate.fee_rate_bps);
-                                            assert!(fee_rate.fee_rate_bps >= 0, "Fee rate should be non-negative");
+                                            println!("  Fee Rate BPS: {}", fee_rate.base_fee);
+                                            assert!(fee_rate.base_fee >= 0, "Fee rate should be non-negative");
                                         }
                                         Err(e) => {
                                             println!("✗ Failed to fetch fee rate: {}", e);
@@ -182,8 +119,8 @@ mod tests {
                                 match get_fee_rate(token_id).await {
                                     Ok(fee_rate) => {
                                         println!("✓ Successfully fetched fee rate: {:?}", fee_rate);
-                                        println!("  Fee Rate BPS: {}", fee_rate.fee_rate_bps);
-                                        assert!(fee_rate.fee_rate_bps >= 0, "Fee rate should be non-negative");
+                                        println!("  Fee Rate BPS: {}", fee_rate.base_fee);
+                                        assert!(fee_rate.base_fee >= 0, "Fee rate should be non-negative");
                                     }
                                     Err(e) => {
                                         panic!("Fee rate fetch failed: {}", e);
@@ -224,7 +161,7 @@ mod tests {
                         match get_fee_rate(token_id).await {
                             Ok(fee_rate) => {
                                 println!("✓ Successfully fetched fee rate: {:?}", fee_rate);
-                                println!("  Fee Rate BPS: {}", fee_rate.fee_rate_bps);
+                                println!("  Fee Rate BPS: {}", fee_rate.base_fee);
                             }
                             Err(e) => {
                                 println!("✗ Failed to fetch fee rate: {}", e);
