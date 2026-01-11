@@ -17,6 +17,7 @@
 //! - [`position_requests`] - User position request builders
 //! - [`price_requests`] - Price data request builders
 //! - [`tag_requests`] - Tag/category request builders
+//! - [`relayer`] - Polymarket Relayer V2 API client for gasless transactions
 //!
 //! ## Example
 //!
@@ -45,6 +46,7 @@ pub mod market_requests;
 pub mod order_requests;
 pub mod position_requests;
 pub mod price_requests;
+pub mod relayer;
 pub mod response_handler;
 pub mod settlement_requests;
 pub mod tag_requests;
@@ -75,5 +77,6 @@ pub use clob_endpoints::*;
 pub use fee_requests::*;
 pub use market_requests::*;
 pub use order_requests::*;
+pub use relayer::*;
 pub use settlement_requests::*;
 pub use webservice_request::*;
