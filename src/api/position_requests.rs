@@ -10,6 +10,7 @@ impl WebserviceRequest {
             api: DATA_API.to_string(),
             url: POSITIONS.to_string(),
             method: Method::GET,
+            with_pagination: true,
             args,
             body: None,
         }

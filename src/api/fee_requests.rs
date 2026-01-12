@@ -30,6 +30,7 @@ pub async fn get_fee_rate(token_id: &str) -> Result<FeeRate> {
         api: CLOB_API.to_string(),
         url: FEE_RATE.to_string(),
         method: Method::GET,
+         with_pagination: false,
         args: Vec::new(),
         body: None,
     };

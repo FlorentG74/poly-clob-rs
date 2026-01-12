@@ -8,6 +8,7 @@ impl WebserviceRequest {
             api: GAMMA_API.to_string(),
             url: GET_TAGS.to_string(),
             method: Method::GET,
+            with_pagination: true,
             args: Vec::<(String, String)>::new(),
             body: None,
         }

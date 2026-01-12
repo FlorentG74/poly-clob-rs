@@ -216,6 +216,7 @@ impl WebserviceRequest {
             api: DATA_API.to_string(),
             url: ACTIVITY.to_string(),
             method: Method::GET,
+            with_pagination: true,
             args,
             body: None,
         }

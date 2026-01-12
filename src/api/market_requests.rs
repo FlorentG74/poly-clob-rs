@@ -199,6 +199,7 @@ impl<'a> MarketBySlugRequest<'a> {
             api: GAMMA_API.to_string(),
             url: format!("{}{}{}", GET_MARKETS, WITH_SLUG, self.slug),
             method: Method::GET,
+            with_pagination: false,
             args: Vec::new(),
             body: None,
         };
@@ -400,6 +401,7 @@ impl<'a> MarketsRequest<'a> {
             api: GAMMA_API.to_string(),
             url: GET_MARKETS.to_string(),
             method: Method::GET,
+            with_pagination: true,
             args: Vec::new(),
             body: None,
         };

@@ -16,6 +16,7 @@ pub struct WebserviceRequest {
     pub api: String,
     pub url: String,
     pub method: Method,
+    pub with_pagination: bool,
     pub args: Vec<(String, String)>,
     pub body: Option<String>,
 }
@@ -39,7 +40,11 @@ impl WebserviceRequest {
         let url = &self.url;
         let limit = self.get_limit();
 
-        let mut callable_url = format!("{api}{url}?limit={limit}&offset={next_offset}");
+        let mut callable_url = if self.with_pagination {
+            format!("{api}{url}?limit={limit}&offset={next_offset}")
+        } else {
+            format!("{api}{url}")
+        };
 
         for (param_name, param_value) in self.args.iter() {
             Self::add_param_to_url(&mut callable_url, param_name.as_str(), param_value.as_str());

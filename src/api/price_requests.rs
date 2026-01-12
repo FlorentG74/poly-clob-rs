@@ -28,6 +28,7 @@ impl WebserviceRequest {
             api: CLOB_API.to_string(),
             url: GET_PRICES.to_string(),
             method: Method::POST,
+            with_pagination: true,
             args,
             body: Some(body),
         }

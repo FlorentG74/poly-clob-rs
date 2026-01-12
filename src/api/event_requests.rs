@@ -12,6 +12,7 @@ impl WebserviceRequest {
             api: GAMMA_API.to_string(),
             url: GET_EVENTS.to_string(),
             method: Method::GET,
+            with_pagination: false,
             args: vec![("id".to_string(), id.to_string())],
             body: None,
         }
@@ -22,6 +23,7 @@ impl WebserviceRequest {
             api: GAMMA_API.to_string(),
             url: GET_EVENT_SERIES.to_string(),
             method: Method::GET,
+            with_pagination: false,
             args: vec![("slug".to_string(), slug.to_string())],
             body: None,
         }
@@ -45,17 +47,16 @@ impl<'a> EventBySlugRequest<'a> {
             api: GAMMA_API.to_string(),
             url: GET_EVENTS.to_string(),
             method: Method::GET,
+            with_pagination: false,
             args: vec![("slug".to_string(), self.slug.to_string())],
             body: None,
         };
 
-        let events = WebserviceRequest::fetch_batch::<Vec<PolyResponseEvent>>(
+        let events = WebserviceRequest::fetch_one::<Vec<PolyResponseEvent>>(
             &client,
-            &web_service_request,
-            0,
+            &web_service_request
         )
         .await
-        .1
         .with_context(|| format!("event not found for slug: {}", self.slug))?;
 
         events.into_iter().next()
