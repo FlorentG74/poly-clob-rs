@@ -38,7 +38,8 @@ pub struct RedeemParams {
     /// The condition ID of the market (bytes32 hex string with 0x prefix).
     pub condition_id: String,
     /// The outcome index to redeem (0 for YES/UP, 1 for NO/DOWN in binary markets).
-    pub outcome_index: u8,
+    /// If None, redeems both outcomes (index sets [1, 2]).
+    pub outcome_index: Option<u8>,
 }
 
 /// Creates a transaction to redeem positions from a resolved market.
@@ -84,8 +85,12 @@ pub fn create_redeem_tx(params: &RedeemParams) -> Result<Transaction> {
     // Parent collection ID is always zero for Polymarket markets
     let parent_collection_id = B256::ZERO;
 
-    // Index set: 1 << outcome_index (1 for index 0, 2 for index 1)
-    let index_set = U256::from(1u64 << params.outcome_index);
+    // Index sets: if outcome_index is None, redeem both outcomes [1, 2]
+    // Otherwise redeem single outcome: 1 << outcome_index
+    let index_sets: Vec<U256> = match params.outcome_index {
+        Some(idx) => vec![U256::from(1u64 << idx)],
+        None => vec![U256::from(1), U256::from(2)], // Both outcomes
+    };
 
     // Parse contract addresses
     let ctf_address: Address = contracts::CTF_CONTRACT
@@ -97,7 +102,8 @@ pub fn create_redeem_tx(params: &RedeemParams) -> Result<Transaction> {
 
     // Encode the function call:
     // redeemPositions(address collateralToken, bytes32 parentCollectionId, bytes32 conditionId, uint256[] indexSets)
-    let mut data = Vec::with_capacity(4 + 32 * 5); // selector + 4 params + array length + array element
+    let array_len = index_sets.len();
+    let mut data = Vec::with_capacity(4 + 32 * 4 + 32 + 32 * array_len); // selector + 4 params + array length + array elements
 
     // Function selector
     data.extend_from_slice(&selectors::REDEEM_POSITIONS);
@@ -118,12 +124,14 @@ pub fn create_redeem_tx(params: &RedeemParams) -> Result<Transaction> {
     let offset = U256::from(128);
     data.extend_from_slice(&offset.to_be_bytes::<32>());
 
-    // Array length (1 element)
-    let array_length = U256::from(1);
+    // Array length
+    let array_length = U256::from(array_len);
     data.extend_from_slice(&array_length.to_be_bytes::<32>());
 
-    // Array element (the index set value)
-    data.extend_from_slice(&index_set.to_be_bytes::<32>());
+    // Array elements (the index set values)
+    for index_set in index_sets {
+        data.extend_from_slice(&index_set.to_be_bytes::<32>());
+    }
 
     Ok(Transaction {
         to: ctf_address,
@@ -132,9 +140,10 @@ pub fn create_redeem_tx(params: &RedeemParams) -> Result<Transaction> {
     })
 }
 
-/// Creates transactions to redeem all positions (both outcomes) from a resolved market.
+/// Creates a transaction to redeem all positions (both outcomes) from a resolved market.
 ///
-/// This is useful when you hold tokens for both outcomes and want to redeem them all.
+/// This is useful when you hold tokens for both outcomes and want to redeem them all
+/// in a single transaction.
 ///
 /// # Arguments
 ///
@@ -142,18 +151,12 @@ pub fn create_redeem_tx(params: &RedeemParams) -> Result<Transaction> {
 ///
 /// # Returns
 ///
-/// A vector of two `Transaction` structs for redeeming both outcomes.
-pub fn create_redeem_all_tx(condition_id: &str) -> Result<Vec<Transaction>> {
-    Ok(vec![
-        create_redeem_tx(&RedeemParams {
-            condition_id: condition_id.to_string(),
-            outcome_index: 0,
-        })?,
-        create_redeem_tx(&RedeemParams {
-            condition_id: condition_id.to_string(),
-            outcome_index: 1,
-        })?,
-    ])
+/// A single `Transaction` struct for redeeming both outcomes with indexSets [1, 2].
+pub fn create_redeem_all_tx(condition_id: &str) -> Result<Transaction> {
+    create_redeem_tx(&RedeemParams {
+        condition_id: condition_id.to_string(),
+        outcome_index: None, // Redeem both outcomes
+    })
 }
 
 #[cfg(test)]
@@ -166,7 +169,7 @@ mod tests {
         let params = RedeemParams {
             condition_id: "0x0000000000000000000000000000000000000000000000000000000000000001"
                 .to_string(),
-            outcome_index: 0,
+            outcome_index: Some(0),
         };
 
         let tx = create_redeem_tx(&params).unwrap();
@@ -203,7 +206,7 @@ mod tests {
         let params = RedeemParams {
             condition_id: "0x0000000000000000000000000000000000000000000000000000000000000001"
                 .to_string(),
-            outcome_index: 1,
+            outcome_index: Some(1),
         };
 
         let tx = create_redeem_tx(&params).unwrap();
@@ -220,19 +223,27 @@ mod tests {
     fn test_create_redeem_all_tx() {
         let condition_id =
             "0x0000000000000000000000000000000000000000000000000000000000000001";
-        let txs = create_redeem_all_tx(condition_id).unwrap();
+        let tx = create_redeem_all_tx(condition_id).unwrap();
 
-        assert_eq!(txs.len(), 2);
+        // Verify it targets the CTF contract
+        assert_eq!(
+            tx.to,
+            contracts::CTF_CONTRACT.parse::<Address>().unwrap()
+        );
 
-        // Both should target the same contract
-        assert_eq!(txs[0].to, txs[1].to);
+        // Verify array length is 2 (both outcomes)
+        let data = tx.data.as_ref();
+        let array_len_offset = 4 + 32 * 4; // selector + 4 params
+        let array_len_bytes = &data[array_len_offset..array_len_offset + 32];
+        let array_len = U256::from_be_slice(array_len_bytes);
+        assert_eq!(array_len, U256::from(2));
     }
 
     #[test]
     fn test_invalid_condition_id() {
         let params = RedeemParams {
             condition_id: "invalid".to_string(),
-            outcome_index: 0,
+            outcome_index: Some(0),
         };
 
         assert!(create_redeem_tx(&params).is_err());
