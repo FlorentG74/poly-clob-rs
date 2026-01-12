@@ -18,6 +18,7 @@
 //! - [`price_requests`] - Price data request builders
 //! - [`tag_requests`] - Tag/category request builders
 //! - [`relayer`] - Polymarket Relayer V2 API client for gasless transactions
+//! - [`utils`] - Utility functions for API interactions
 //!
 //! ## Example
 //!
@@ -52,6 +53,7 @@ pub mod response_handler;
 pub mod settlement_requests;
 pub mod tag_requests;
 pub mod webservice_request;
+pub mod utils;
 
 /// Sort direction for requests (ascending or descending).
 #[derive(Debug, Clone, Copy)]
@@ -82,3 +84,4 @@ pub use orderbook_requests::*;
 pub use relayer::*;
 pub use settlement_requests::*;
 pub use webservice_request::*;
+pub use utils::*;

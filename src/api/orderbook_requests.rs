@@ -454,10 +454,10 @@ mod tests {
 
             // Log best bid/ask if available
             if let Some(best_bid) = book.bids.last() {
-                println!("  Best bid: {} @ size {}", best_bid.price, best_bid.size);
+                println!("  Best bid: {:?} @ size {:?}", best_bid.price, best_bid.size);
             }
             if let Some(best_ask) = book.asks.last() {
-                println!("  Best ask: {} @ size {}", best_ask.price, best_ask.size);
+                println!("  Best ask: {:?} @ size {:?}", best_ask.price, best_ask.size);
             }
         }
 

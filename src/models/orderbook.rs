@@ -2,9 +2,9 @@
 //!
 //! This module contains types for representing order book data returned by the `/books` endpoint.
 
-use serde::{Deserialize, Serialize};
-
 use crate::models::ApiResponse;
+use crate::utils::deserialize_string_to_option_f32;
+use serde::{Deserialize, Serialize};
 
 /// A single price level in the order book.
 ///
@@ -12,9 +12,11 @@ use crate::models::ApiResponse;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrderBookLevel {
     /// Price at this level
-    pub price: String,
+    #[serde(default, deserialize_with = "deserialize_string_to_option_f32")]
+    pub price: Option<f32>,
     /// Cumulative size at this price level
-    pub size: String,
+    #[serde(default, deserialize_with = "deserialize_string_to_option_f32")]
+    pub size: Option<f32>,
 }
 
 /// Order book summary for a single token.
@@ -73,24 +75,16 @@ impl OrderBook {
 
     /// Returns the total bid depth (sum of all bid sizes).
     ///
-    /// Parses each bid's size field as f64 and sums them.
-    /// Invalid size values are treated as 0.
-    pub fn get_bid_depth(&self) -> f64 {
-        self.bids
-            .iter()
-            .filter_map(|level| level.size.parse::<f64>().ok())
-            .sum()
+    /// Sums each bid's size field. None values are treated as 0.
+    pub fn get_bid_depth(&self) -> f32 {
+        self.bids.iter().filter_map(|level| level.size).sum()
     }
 
     /// Returns the total ask depth (sum of all ask sizes).
     ///
-    /// Parses each ask's size field as f64 and sums them.
-    /// Invalid size values are treated as 0.
-    pub fn get_ask_depth(&self) -> f64 {
-        self.asks
-            .iter()
-            .filter_map(|level| level.size.parse::<f64>().ok())
-            .sum()
+    /// Sums each ask's size field. None values are treated as 0.
+    pub fn get_ask_depth(&self) -> f32 {
+        self.asks.iter().filter_map(|level| level.size).sum()
     }
 }
 
@@ -124,9 +118,11 @@ mod tests {
         let orderbook: OrderBook = serde_json::from_str(json).unwrap();
         assert_eq!(orderbook.asset_id, "1234567890");
         assert_eq!(orderbook.bids.len(), 1);
-        assert_eq!(orderbook.bids[0].price, "0.50");
+        assert_eq!(orderbook.bids[0].price, Some(0.50));
+        assert_eq!(orderbook.bids[0].size, Some(100.5));
         assert_eq!(orderbook.asks.len(), 1);
-        assert_eq!(orderbook.asks[0].price, "0.52");
+        assert_eq!(orderbook.asks[0].price, Some(0.52));
+        assert_eq!(orderbook.asks[0].size, Some(200.0));
         assert_eq!(orderbook.tick_size, Some("0.01".to_string()));
         assert_eq!(orderbook.neg_risk, Some(false));
     }
@@ -170,26 +166,26 @@ mod tests {
             hash: None,
             bids: vec![
                 OrderBookLevel {
-                    price: "0.50".to_string(),
-                    size: "100.5".to_string(),
+                    price: Some(0.50),
+                    size: Some(100.5),
                 },
                 OrderBookLevel {
-                    price: "0.49".to_string(),
-                    size: "200.25".to_string(),
+                    price: Some(0.49),
+                    size: Some(200.25),
                 },
                 OrderBookLevel {
-                    price: "0.48".to_string(),
-                    size: "50.0".to_string(),
+                    price: Some(0.48),
+                    size: Some(50.0),
                 },
             ],
             asks: vec![
                 OrderBookLevel {
-                    price: "0.51".to_string(),
-                    size: "75.0".to_string(),
+                    price: Some(0.51),
+                    size: Some(75.0),
                 },
                 OrderBookLevel {
-                    price: "0.52".to_string(),
-                    size: "125.5".to_string(),
+                    price: Some(0.52),
+                    size: Some(125.5),
                 },
             ],
             min_order_size: None,
@@ -203,13 +199,44 @@ mod tests {
         // Test ask depth: 75.0 + 125.5 = 200.5
         assert!((orderbook.get_ask_depth() - 200.5).abs() < 0.001);
 
-        // Test best bid (last in the list, which is highest price after sorting)
+        // Test best bid (last in the list)
         let best_bid = orderbook.best_bid().unwrap();
-        assert_eq!(best_bid.price, "0.48");
+        assert_eq!(best_bid.price, Some(0.48));
 
-        // Test best ask (last in the list, which is lowest price after sorting)
+        // Test best ask (last in the list)
         let best_ask = orderbook.best_ask().unwrap();
-        assert_eq!(best_ask.price, "0.52");
+        assert_eq!(best_ask.price, Some(0.52));
+    }
+
+    #[test]
+    fn test_orderbook_depth_with_none_values() {
+        let orderbook = OrderBook {
+            market: "market1".to_string(),
+            asset_id: "asset1".to_string(),
+            timestamp: None,
+            hash: None,
+            bids: vec![
+                OrderBookLevel {
+                    price: Some(0.50),
+                    size: Some(100.0),
+                },
+                OrderBookLevel {
+                    price: Some(0.49),
+                    size: None, // None value should be skipped
+                },
+                OrderBookLevel {
+                    price: None,
+                    size: Some(50.0),
+                },
+            ],
+            asks: vec![],
+            min_order_size: None,
+            tick_size: None,
+            neg_risk: None,
+        };
+
+        // Only 100.0 + 50.0 = 150.0 (None is skipped)
+        assert!((orderbook.get_bid_depth() - 150.0).abs() < 0.001);
     }
 
     #[test]
