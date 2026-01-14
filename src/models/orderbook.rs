@@ -86,6 +86,56 @@ impl OrderBook {
     pub fn get_ask_depth(&self) -> f32 {
         self.asks.iter().filter_map(|level| level.size).sum()
     }
+
+    /// Returns the best bid price (highest buy price).
+    /// Returns 0.0 if no bids are available.
+    pub fn best_bid_price(&self) -> f64 {
+        self.best_bid()
+            .and_then(|l| l.price)
+            .unwrap_or(0.0) as f64
+    }
+
+    /// Returns the best ask price (lowest sell price).
+    /// Returns 0.0 if no asks are available.
+    pub fn best_ask_price(&self) -> f64 {
+        self.best_ask()
+            .and_then(|l| l.price)
+            .unwrap_or(0.0) as f64
+    }
+
+    /// Returns the bid depth (sum of sizes) for prices >= the given price.
+    /// This is useful for estimating how much liquidity is available
+    /// to fill a sell order at or above a certain price.
+    pub fn bid_depth_to_price(&self, price: f64) -> f64 {
+        let price_f32 = price as f32;
+        self.bids
+            .iter()
+            .filter(|level| level.price.unwrap_or(0.0) >= price_f32)
+            .filter_map(|level| level.size)
+            .sum::<f32>() as f64
+    }
+
+    /// Returns the ask depth (sum of sizes) for prices <= the given price.
+    /// This is useful for estimating how much liquidity is available
+    /// to fill a buy order at or below a certain price.
+    pub fn ask_depth_to_price(&self, price: f64) -> f64 {
+        let price_f32 = price as f32;
+        self.asks
+            .iter()
+            .filter(|level| level.price.unwrap_or(f32::MAX) <= price_f32)
+            .filter_map(|level| level.size)
+            .sum::<f32>() as f64
+    }
+
+    /// Returns bid depth as f64 (convenience wrapper around get_bid_depth)
+    pub fn bid_depth(&self) -> f64 {
+        self.get_bid_depth() as f64
+    }
+
+    /// Returns ask depth as f64 (convenience wrapper around get_ask_depth)
+    pub fn ask_depth(&self) -> f64 {
+        self.get_ask_depth() as f64
+    }
 }
 
 /// Response type for the order books endpoint.
@@ -257,5 +307,66 @@ mod tests {
         assert_eq!(orderbook.get_ask_depth(), 0.0);
         assert!(orderbook.best_bid().is_none());
         assert!(orderbook.best_ask().is_none());
+    }
+
+    #[test]
+    fn test_orderbook_price_methods() {
+        let orderbook = OrderBook {
+            market: "market1".to_string(),
+            asset_id: "asset1".to_string(),
+            timestamp: None,
+            hash: None,
+            bids: vec![
+                OrderBookLevel { price: Some(0.50), size: Some(100.0) },
+                OrderBookLevel { price: Some(0.49), size: Some(200.0) },
+                OrderBookLevel { price: Some(0.48), size: Some(50.0) },
+            ],
+            asks: vec![
+                OrderBookLevel { price: Some(0.51), size: Some(75.0) },
+                OrderBookLevel { price: Some(0.52), size: Some(125.0) },
+            ],
+            min_order_size: None,
+            tick_size: None,
+            neg_risk: None,
+        };
+
+        // Note: bids sorted descending, so last() is lowest price (0.48)
+        // This matches the API behavior
+        assert!((orderbook.best_bid_price() - 0.48).abs() < 0.001);
+        assert!((orderbook.best_ask_price() - 0.52).abs() < 0.001);
+
+        // bid_depth_to_price: sum of sizes for bids >= 0.49
+        // 0.50 (100) + 0.49 (200) = 300
+        assert!((orderbook.bid_depth_to_price(0.49) - 300.0).abs() < 0.001);
+
+        // ask_depth_to_price: sum of sizes for asks <= 0.51
+        // 0.51 (75) = 75
+        assert!((orderbook.ask_depth_to_price(0.51) - 75.0).abs() < 0.001);
+
+        // Test wrapper methods
+        assert!((orderbook.bid_depth() - 350.0).abs() < 0.001);
+        assert!((orderbook.ask_depth() - 200.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_orderbook_empty_prices() {
+        let orderbook = OrderBook {
+            market: "m".to_string(),
+            asset_id: "a".to_string(),
+            timestamp: None,
+            hash: None,
+            bids: vec![],
+            asks: vec![],
+            min_order_size: None,
+            tick_size: None,
+            neg_risk: None,
+        };
+
+        assert_eq!(orderbook.best_bid_price(), 0.0);
+        assert_eq!(orderbook.best_ask_price(), 0.0);
+        assert_eq!(orderbook.bid_depth_to_price(0.5), 0.0);
+        assert_eq!(orderbook.ask_depth_to_price(0.5), 0.0);
+        assert_eq!(orderbook.bid_depth(), 0.0);
+        assert_eq!(orderbook.ask_depth(), 0.0);
     }
 }
