@@ -63,7 +63,7 @@ Once all TODOs above are completed:
 git status
 
 # 2. Verify package builds correctly
-cargo build --release
+cargo build
 
 # 3. Run final checks
 cargo clippy --all-targets
