@@ -155,6 +155,8 @@ impl<'a> OrderBooksRequest<'a> {
     /// # }
     /// ```
     pub async fn execute(&self) -> Result<OrderBooksResponse> {
+        use super::webservice_request::WebserviceRequest;
+
         // Build the query items from both sources
         let mut query_items: Vec<OrderBookQueryItem> = Vec::new();
 
@@ -185,44 +187,49 @@ impl<'a> OrderBooksRequest<'a> {
             );
         }
 
-        let body =
-            serde_json::to_string(&query_items).context("failed to serialize request body")?;
+        let body = serde_json::to_string(&query_items)
+            .context("failed to serialize request body")?;
+
+        // Enhanced logging with token count
+        log::debug!(
+            "Fetching order books for {} tokens from {}{}",
+            query_items.len(),
+            CLOB_API,
+            GET_ORDER_BOOKS
+        );
+        log::debug!(
+            "Token IDs: {:?}",
+            query_items
+                .iter()
+                .map(|q| &q.token_id[..q.token_id.len().min(10)])
+                .collect::<Vec<_>>()
+        );
+
+        // Use WebserviceRequest for retry logic (3 attempts with 2s delay)
+        let ws_request = WebserviceRequest {
+            api: CLOB_API.to_string(),
+            url: GET_ORDER_BOOKS.to_string(),
+            method: Method::POST,
+            with_pagination: false, // Order books don't use pagination
+            args: vec![],           // No query parameters
+            body: Some(body),
+        };
 
         let client = get_http_client(Some(CLOB_API));
-        let url = format!("{}{}", CLOB_API, GET_ORDER_BOOKS);
 
-        log::debug!("OrderBooksRequest URL: {}, body: {}", url, body);
-
-        let response = client
-            .request(Method::POST, &url)
-            .header("Content-Type", "application/json")
-            .body(body)
-            .send()
-            .await
-            .context("failed to send order books request")?;
-
-        let status = response.status();
-        if !status.is_success() {
-            let error_text = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "unknown error".to_string());
-            anyhow::bail!(
-                "Order books request failed with status {}: {}",
-                status,
-                error_text
-            );
+        // fetch_one returns Option<T>, handle the None case
+        match WebserviceRequest::fetch_one::<OrderBooksResponse>(&client, &ws_request).await {
+            Some(books) => {
+                log::debug!("Successfully fetched {} order books", books.len());
+                Ok(books)
+            }
+            None => {
+                anyhow::bail!(
+                    "Failed to fetch order books for {} tokens after retries",
+                    query_items.len()
+                )
+            }
         }
-
-        let text = response
-            .text()
-            .await
-            .context("failed to read response body")?;
-
-        log::trace!("OrderBooksRequest response: {}", text);
-
-        serde_json::from_str::<OrderBooksResponse>(&text)
-            .context("failed to deserialize order books response")
     }
 }
 

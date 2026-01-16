@@ -84,8 +84,12 @@ fn get_clob_http_client() -> &'static Client {
     CLOB_HTTP_CLIENT.get_or_init(|| {
         #[allow(unused_mut)] // Mutability needed only if split tunneling is configured
         let mut builder = Client::builder()
-            .pool_max_idle_per_host(10)
-            .timeout(Duration::from_secs(30));
+            .pool_max_idle_per_host(20)  // Increased from 10 to handle 8 concurrent strategies
+            .pool_idle_timeout(Some(Duration::from_secs(90)))  // Keep idle connections alive longer
+            .timeout(Duration::from_secs(30))
+            .connect_timeout(Duration::from_secs(10))  // Explicit connect timeout
+            .tcp_nodelay(true)  // Disable Nagle's algorithm for lower latency
+            .tcp_keepalive(Some(Duration::from_secs(60)));  // Enable TCP keepalive
 
         // Configure split tunneling if SPLIT_TUNNEL_IFACE environment variable is set and we're on a supported platform
         #[cfg(any(
