@@ -85,6 +85,7 @@ impl WebserviceRequest {
     ///     api: "https://gamma-api.polymarket.com".to_string(),
     ///     url: "/markets".to_string(),
     ///     method: Method::GET,
+    ///     with_pagination: true,
     ///     args: vec![("active".to_string(), "true".to_string())],
     ///     body: None,
     /// };
@@ -243,6 +244,7 @@ impl WebserviceRequest {
     ///     api: "https://gamma-api.polymarket.com".to_string(),
     ///     url: "/markets/slug/bitcoin-above-100k".to_string(),
     ///     method: Method::GET,
+    ///     with_pagination: false,
     ///     args: Vec::new(),
     ///     body: None,
     /// };

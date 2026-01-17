@@ -32,7 +32,7 @@
 //!     // Create a redeem transaction
 //!     let tx = create_redeem_tx(&RedeemParams {
 //!         condition_id: "0x...".to_string(),
-//!         outcome_index: 0,
+//!         outcome_index: Some(0),
 //!     })?;
 //!
 //!     // Submit and wait for confirmation

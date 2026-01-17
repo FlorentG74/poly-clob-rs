@@ -103,7 +103,7 @@ struct OrderBookQueryItem {
 ///
 /// for book in &books {
 ///     if let Some(bid) = book.bids.first() {
-///         println!("Best bid for {}: {} @ {}", book.asset_id, bid.size, bid.price);
+///         println!("Best bid for {}: {:?} @ {:?}", book.asset_id, bid.size, bid.price);
 ///     }
 /// }
 /// # Ok(())

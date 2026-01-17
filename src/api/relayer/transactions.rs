@@ -69,7 +69,7 @@ pub struct RedeemParams {
 ///
 /// let tx = create_redeem_tx(&RedeemParams {
 ///     condition_id: "0x6d36239527622360000000000000000000000000000000000000000000000000".to_string(),
-///     outcome_index: 0, // Redeem YES tokens
+///     outcome_index: Some(0), // Redeem YES tokens
 /// }).unwrap();
 ///
 /// println!("Target: {}", tx.to);

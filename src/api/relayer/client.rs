@@ -59,7 +59,7 @@ pub const DEFAULT_MAX_POLL_ATTEMPTS: u32 = 30;
 ///     // Create and submit a redeem transaction
 ///     let redeem_tx = create_redeem_tx(&RedeemParams {
 ///         condition_id: "0x...".to_string(),
-///         outcome_index: 0,
+///         outcome_index: Some(0),
 ///     })?;
 ///
 ///     let response = client.submit(vec![redeem_tx]).await?;
