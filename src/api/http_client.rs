@@ -14,7 +14,7 @@ use reqwest::Client;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use crate::CLOB_API;
+use crate::{CANCEL, POST_ORDER};
 
 /// Default HTTP client singleton for non-CLOB requests.
 ///
@@ -63,9 +63,9 @@ static CLOB_HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
 /// # Ok(())
 /// # }
 /// ```
-pub fn get_http_client(endpoint: Option<&str>) -> &'static Client {
-    match endpoint {
-        Some(target) if target.starts_with(CLOB_API) => get_clob_http_client(),
+pub fn get_http_client(request_path: Option<&str>) -> &'static Client {
+    match request_path {
+        Some(path) if path.eq(POST_ORDER) | path.eq(CANCEL) => get_clob_http_client(),
         _ => get_default_http_client(),
     }
 }

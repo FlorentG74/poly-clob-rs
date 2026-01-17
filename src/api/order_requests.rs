@@ -149,12 +149,12 @@ impl<'a> LimitOrderRequest<'a> {
             }
         }
 
-        let client = get_http_client(Some(CLOB_API));
-
         let method = "POST";
         let request_path = POST_ORDER;
 
         let callable_url = format!("{}{}", CLOB_API, request_path);
+
+        let client = get_http_client(Some(request_path));
 
         // Polymarket API amounts are in raw units (10^6):
         // - For BUY orders: maker_amount is USDC (price denominated), taker_amount is tokens
@@ -307,12 +307,12 @@ impl<'a> CancelOrderRequest<'a> {
     /// * The HTTP request fails
     /// * The API returns an error response
     pub async fn execute(&self) -> Result<String> {
-        let client = get_http_client(Some(CLOB_API));
-
         let method = "DELETE";
         let request_path = CANCEL;
 
         let callable_url = format!("{}{}", CLOB_API, request_path);
+
+        let client = get_http_client(Some(CANCEL));
 
         // Build request body with orderID
         let body = format!(r#"{{"orderID":"{}"}}"#, self.order_id);
@@ -364,7 +364,7 @@ pub async fn get_open_orders_by_market(signer: &Account, market_id: &str) -> Res
 
 /// Fetches raw orders from the CLOB API.
 async fn fetch_raw_orders(signer: &Account, market_id: &str) -> Result<MarketOrders> {
-    let client = get_http_client(Some(CLOB_API));
+    let client = get_http_client(None);
 
     let method = "GET";
     let request_path = ORDERS;

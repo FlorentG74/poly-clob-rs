@@ -158,7 +158,7 @@ impl<'a> ActivityRequest<'a> {
     /// * The API returns an error response
     /// * The response cannot be deserialized
     pub async fn execute(&self) -> Result<Vec<UserActivity>> {
-        let client = get_http_client(Some(DATA_API));
+        let client = get_http_client(None);
 
         let mut web_service_request = WebserviceRequest::new_activity_ws_request(self.user);
 

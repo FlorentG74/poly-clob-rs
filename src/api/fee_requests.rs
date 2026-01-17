@@ -24,7 +24,7 @@ impl ApiResponse for FeeRate {
 
 /// Fetches the fee rate for a given token ID.
 pub async fn get_fee_rate(token_id: &str) -> Result<FeeRate> {
-    let client = get_http_client(Some(CLOB_API));
+    let client = get_http_client(None);
 
     let mut request = WebserviceRequest {
         api: CLOB_API.to_string(),

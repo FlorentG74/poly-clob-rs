@@ -31,13 +31,14 @@ pub async fn get_balance_allowance(
     token_id: &str,
     signature_type: i32,
 ) -> Result<String> {
-    let client = get_http_client(Some(CLOB_API));
-
     let method = "GET";
     let request_path = GET_BALANCE_ALLOWANCE;
     let body = "";
 
     let mut callable_url = format!("{}{}", CLOB_API, request_path);
+
+    let client = get_http_client(Some(request_path));
+
     WebserviceRequest::add_param_to_url(&mut callable_url, "asset_type", asset_type.into());
     WebserviceRequest::add_param_to_url(&mut callable_url, "token_id", token_id);
 
@@ -71,13 +72,14 @@ pub async fn get_balance_allowance(
 ///
 /// Returns `Ok(String)` with the API response on success, or an error on failure.
 pub async fn get_api_key(signer: &Account, signature_type: i32) -> Result<String> {
-    let client = get_http_client(Some(CLOB_API));
 
     let method = "GET";
     let request_path = GET_API_KEYS;
     let body = "";
 
     let mut callable_url = format!("{}{}", CLOB_API, request_path);
+
+    let client = get_http_client(Some(request_path));
 
     if signature_type != -1 {
         let signature_str = format!("{}", signature_type);
