@@ -204,16 +204,11 @@ impl<'a> MarketBySlugRequest<'a> {
             body: None,
         };
 
-        let callable_url = web_service_request.get_callable_url(0);
         super::webservice_request::WebserviceRequest::fetch_one::<PolyResponseMarket>(
             &client,
             &web_service_request,
         )
         .await
-        .ok_or_else(|| crate::api::error::ApiError::NotFound {
-            url: callable_url,
-            resource: format!("market with slug: {}", self.slug),
-        }.into())
     }
 }
 
@@ -514,18 +509,15 @@ impl<'a> MarketsRequest<'a> {
             );
         }
 
-        let callable_url = web_service_request.get_callable_url(self.offset);
-        log::debug!("Markets request URL: {}", callable_url);
+        let (_, markets) =
+            super::webservice_request::WebserviceRequest::fetch_batch::<MarketsResponse>(
+                &client,
+                &web_service_request,
+                self.offset,
+            )
+            .await?;
 
-        let (_, result) = super::webservice_request::WebserviceRequest::fetch_batch::<
-            MarketsResponse,
-        >(&client, &web_service_request, self.offset)
-        .await;
-
-        result.ok_or_else(|| crate::api::error::ApiError::NotFound {
-            url: callable_url,
-            resource: "markets".to_string(),
-        }.into())
+        Ok(markets)
     }
 }
 

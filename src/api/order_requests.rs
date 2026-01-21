@@ -392,49 +392,15 @@ async fn fetch_raw_orders(signer: &Account, market_id: &str) -> Result<MarketOrd
 
 /// Handles the HTTP response for orders requests.
 async fn handle_orders_response(response: reqwest::Response, url: &str) -> Result<MarketOrders> {
-    match response.status() {
-        reqwest::StatusCode::OK => {
-            let text = response.text().await
-                .map_err(|e| crate::api::error::HttpError::ReadBody {
-                    url: url.to_string(),
-                    message: e.to_string(),
-                })?;
-            log::trace!("API response: {}", text);
-            serde_json::from_str(&text)
-                .map_err(|e| crate::api::error::SerializationError::JsonDeserialize {
-                    message: e.to_string(),
-                    raw_response: text.clone(),
-                }.into())
+    let response_text = handle_api_response(response, url).await?;
+
+    serde_json::from_str(&response_text).map_err(|e| {
+        crate::SerializationError::JsonDeserialize {
+            message: e.to_string(),
+            raw_response: response_text,
         }
-        reqwest::StatusCode::TOO_MANY_REQUESTS => {
-            log::error!("Rate Limit reached - pausing for 5 secs");
-            Err(crate::api::error::ApiError::RateLimited {
-                retry_after: std::time::Duration::from_secs(5),
-                url: url.to_string(),
-                retry_after_header: None,
-            }.into())
-        }
-        reqwest::StatusCode::UNAUTHORIZED => {
-            log::error!("Authentication failed for request {}", url);
-            Err(crate::api::error::ApiError::Unauthorized {
-                url: url.to_string(),
-                details: None,
-            }.into())
-        }
-        other => {
-            log::error!(
-                "Unexpected error in service call: {:?}; url: {}",
-                other,
-                url
-            );
-            Err(crate::api::error::ApiError::UnexpectedStatus {
-                status: other.as_u16(),
-                url: url.to_string(),
-                message: format!("HTTP {}", other),
-                response_body: String::new(),
-            }.into())
-        }
-    }
+        .into()
+    })
 }
 
 /// Enriches raw orders with market data.

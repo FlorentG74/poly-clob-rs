@@ -101,121 +101,63 @@ impl WebserviceRequest {
         client: &Client,
         web_service_request: &WebserviceRequest,
         next_offset: i32,
-    ) -> (i32, Option<T>)
+    ) -> crate::Result<(i32, T)>
     where
         T: for<'a> serde::Deserialize<'a> + ApiResponse,
     {
-        for attempt in 1..=MAX_RETRIES {
-            let callable_url = web_service_request.get_callable_url(next_offset);
+        let callable_url = web_service_request.get_callable_url(next_offset);
 
-            log::debug!(
-                "Calling method: {} on url: {} (attempt {}/{})",
-                web_service_request.method,
-                callable_url,
-                attempt,
-                MAX_RETRIES
-            );
+        log::debug!(
+            "Calling method: {} on url: {}",
+            web_service_request.method,
+            callable_url,
+        );
 
-            let request = match web_service_request.method {
-                Method::GET => client.get(&callable_url),
-                Method::POST => {
-                    let req = client.post(&callable_url);
-                    match web_service_request.get_body() {
-                        Some(body) => req.body(body),
-                        None => req,
-                    }
-                }
-                _ => {
-                    log::error!("Unsupported Method");
-                    return (-1, None);
-                }
-            };
-
-            match request.send().await {
-                Ok(response) => match response.status() {
-                    reqwest::StatusCode::OK => {
-                        let text = match response.text().await {
-                            Ok(t) => t,
-                            Err(e) => {
-                                log::error!("Failed to read response body: {}", e);
-                                return (-1, None);
-                            }
-                        };
-                        log::trace!("API Response: {}", text);
-
-                        match serde_json::from_str::<T>(&text) {
-                            Ok(ws_response) => {
-                                let nb_results_retrieved: i32 =
-                                    ws_response.nb_results() as i32;
-
-                                log::debug!("Retrieved {:?} results", nb_results_retrieved);
-
-                                if nb_results_retrieved > 0 {
-                                    if nb_results_retrieved == web_service_request.get_limit() {
-                                        return (
-                                            next_offset + web_service_request.get_limit(),
-                                            Some(ws_response),
-                                        );
-                                    } else {
-                                        return (-1, Some(ws_response));
-                                    }
-                                } else {
-                                    return (-1, None);
-                                }
-                            }
-                            Err(err) => {
-                                log::error!("Error - can't deserialize API Response. Err: {}", err);
-                                return (-1, None);
-                            }
-                        }
-                    }
-                    reqwest::StatusCode::TOO_MANY_REQUESTS
-                    | reqwest::StatusCode::GATEWAY_TIMEOUT
-                    | reqwest::StatusCode::BAD_GATEWAY
-                    | reqwest::StatusCode::INTERNAL_SERVER_ERROR
-                    | reqwest::StatusCode::CONFLICT => {
-                        if attempt < MAX_RETRIES {
-                            log::warn!(
-                                "Err {} - retrying after {} ms (attempt {}/{})",
-                                response.status(),
-                                RETRY_DELAY_MS,
-                                attempt,
-                                MAX_RETRIES
-                            );
-                            sleep(Duration::from_millis(RETRY_DELAY_MS)).await;
-                            continue;
-                        } else {
-                            log::error!("Err {} - max retries exceeded", response.status());
-                            return (next_offset, None);
-                        }
-                    }
-                    reqwest::StatusCode::UNAUTHORIZED => {
-                        log::error!("Authentication failed for request {}", callable_url);
-                        return (next_offset, None);
-                    }
-                    other => {
-                        log::error!(
-                            "Unexpected error in service call: {:?}; url: {}",
-                            other,
-                            callable_url
-                        );
-                        return (next_offset, None);
-                    }
-                },
-                Err(err) => {
-                    log::error!(
-                    "Error - request failed. URL: {}, Err: {:?}, is_timeout: {}, is_connect: {}",
-                    callable_url,
-                    err,
-                    err.is_timeout(),
-                    err.is_connect()
-                );
-                    return (-1, None);
+        let request = match web_service_request.method {
+            Method::GET => client.get(&callable_url),
+            Method::POST => {
+                let req = client.post(&callable_url);
+                if let Some(body) = web_service_request.get_body() {
+                    req.body(body)
+                } else {
+                    req
                 }
             }
-        }
+            _ => {
+                return Err(crate::ClobError::Validation(
+                    crate::ValidationError::InvalidParameter {
+                        parameter: "method".to_string(),
+                        reason: format!("Unsupported method: {}", web_service_request.method),
+                    },
+                ));
+            }
+        };
 
-        (next_offset, None)
+        let response = request
+            .send()
+            .await
+            .map_err(|e| crate::HttpError::from_reqwest(e, &callable_url))?;
+
+        let response_text = crate::handle_api_response(response, &callable_url).await?;
+
+        let ws_response: T = serde_json::from_str(&response_text).map_err(|e| {
+            crate::SerializationError::JsonDeserialize {
+                message: e.to_string(),
+                raw_response: response_text,
+            }
+            .into()
+        })?;
+
+        let nb_results_retrieved = ws_response.nb_results() as i32;
+        log::debug!("Retrieved {:?} results", nb_results_retrieved);
+
+        let next_offset = if nb_results_retrieved == web_service_request.get_limit() {
+            next_offset + web_service_request.get_limit()
+        } else {
+            -1
+        };
+
+        Ok((next_offset, ws_response))
     }
 
     /// Fetch a single item from API without pagination.
@@ -256,107 +198,51 @@ impl WebserviceRequest {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn fetch_one<T>(client: &Client, web_service_request: &WebserviceRequest) -> Option<T>
+    pub async fn fetch_one<T>(client: &Client, web_service_request: &WebserviceRequest) -> crate::Result<T>
     where
-        T: for<'a> serde::Deserialize<'a> + ApiResponse,
+        T: for<'a> serde::Deserialize<'a>,
     {
-        for attempt in 1..=MAX_RETRIES {
-            let callable_url = web_service_request.get_callable_url(0);
+        let callable_url = web_service_request.get_callable_url(0);
+        log::debug!(
+            "Calling method: {} on url: {}",
+            web_service_request.method,
+            callable_url,
+        );
 
-            log::debug!(
-                "Calling method: {} on url: {} (attempt {}/{})",
-                web_service_request.method,
-                callable_url,
-                attempt,
-                MAX_RETRIES
-            );
-
-            let request = match web_service_request.method {
-                Method::GET => client.get(&callable_url),
-                Method::POST => {
-                    let req = client.post(&callable_url);
-                    match web_service_request.get_body() {
-                        Some(body) => req.body(body),
-                        None => req,
-                    }
-                }
-                _ => {
-                    log::error!("Unsupported Method");
-                    return None;
-                }
-            };
-
-            let response = match request.send().await {
-                Ok(r) => r,
-                Err(err) => {
-                    log::error!(
-                    "Error - request failed. URL: {}, Err: {:?}, is_timeout: {}, is_connect: {}",
-                    callable_url,
-                    err,
-                    err.is_timeout(),
-                    err.is_connect()
-                );
-                    return None;
-                }
-            };
-
-            match response.status() {
-                reqwest::StatusCode::OK => {
-                    let text = match response.text().await {
-                        Ok(t) => t,
-                        Err(e) => {
-                            log::error!("Failed to read response body: {}", e);
-                            return None;
-                        }
-                    };
-                    log::trace!("API Response: {}", text);
-
-                    match serde_json::from_str::<T>(&text) {
-                        Ok(ws_response) => {
-                            return Some(ws_response);
-                        }
-                        Err(err) => {
-                            log::error!("Error - can't deserialize API Response. Err: {}", err);
-                            return None;
-                        }
-                    }
-                }
-                reqwest::StatusCode::TOO_MANY_REQUESTS
-                | reqwest::StatusCode::GATEWAY_TIMEOUT
-                | reqwest::StatusCode::BAD_GATEWAY
-                | reqwest::StatusCode::INTERNAL_SERVER_ERROR
-                | reqwest::StatusCode::CONFLICT => {
-                    if attempt < MAX_RETRIES {
-                        log::warn!(
-                            "Err {} - retrying after {} ms (attempt {}/{})",
-                            response.status(),
-                            RETRY_DELAY_MS,
-                            attempt,
-                            MAX_RETRIES
-                        );
-                        sleep(Duration::from_millis(RETRY_DELAY_MS)).await;
-                        continue;
-                    } else {
-                        log::error!("Err {} - max retries exceeded", response.status());
-                        return None;
-                    }
-                }
-                reqwest::StatusCode::UNAUTHORIZED => {
-                    log::error!("Authentication failed for request {}", callable_url);
-                    return None;
-                }
-                other => {
-                    log::error!(
-                        "Unexpected error in service call: {:?}; url: {}",
-                        other,
-                        callable_url
-                    );
-                    return None;
+        let request = match web_service_request.method {
+            Method::GET => client.get(&callable_url),
+            Method::POST => {
+                let req = client.post(&callable_url);
+                if let Some(body) = web_service_request.get_body() {
+                    req.body(body)
+                } else {
+                    req
                 }
             }
-        }
+            _ => {
+                return Err(crate::ClobError::Validation(
+                    crate::ValidationError::InvalidParameter {
+                        parameter: "method".to_string(),
+                        reason: format!("Unsupported method: {}", web_service_request.method),
+                    },
+                ));
+            }
+        };
 
-        None
+        let response = request
+            .send()
+            .await
+            .map_err(|e| crate::HttpError::from_reqwest(e, &callable_url))?;
+
+        let response_text = crate::handle_api_response(response, &callable_url).await?;
+
+        serde_json::from_str::<T>(&response_text).map_err(|e| {
+            crate::SerializationError::JsonDeserialize {
+                message: e.to_string(),
+                raw_response: response_text,
+            }
+            .into()
+        })
     }
 
     pub fn add_param_to_url(url: &mut String, name: &str, value: &str) {

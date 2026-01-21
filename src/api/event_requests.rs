@@ -53,20 +53,16 @@ impl<'a> EventBySlugRequest<'a> {
         };
 
         let callable_url = web_service_request.get_callable_url(0);
-        let events = WebserviceRequest::fetch_one::<Vec<PolyResponseEvent>>(
-            &client,
-            &web_service_request
-        )
-        .await
-        .ok_or_else(|| crate::api::error::ApiError::NotFound {
-            url: callable_url.clone(),
-            resource: format!("event with slug: {}", self.slug),
-        })?;
+        let events =
+            WebserviceRequest::fetch_one::<Vec<PolyResponseEvent>>(&client, &web_service_request)
+                .await?;
 
-        events.into_iter().next()
-            .ok_or_else(|| crate::api::error::ApiError::NotFound {
+        events.into_iter().next().ok_or_else(|| {
+            crate::ApiError::NotFound {
                 url: callable_url,
                 resource: format!("event with slug: {}", self.slug),
-            }.into())
+            }
+            .into()
+        })
     }
 }

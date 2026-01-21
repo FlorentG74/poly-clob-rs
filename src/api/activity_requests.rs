@@ -201,11 +201,7 @@ impl<'a> ActivityRequest<'a> {
         log::debug!("Activity request URL: {}", callable_url);
 
         let result = WebserviceRequest::fetch_one::<UserActivityResponse>(client, &web_service_request)
-            .await
-            .ok_or_else(|| crate::api::error::ClobError::from(crate::api::error::ApiError::NotFound {
-                url: callable_url.clone(),
-                resource: "user activity".to_string(),
-            }))?;
+            .await?;
 
         Ok(result)
     }
