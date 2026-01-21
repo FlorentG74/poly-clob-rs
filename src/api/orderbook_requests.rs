@@ -224,17 +224,13 @@ impl<'a> OrderBooksRequest<'a> {
 
         // fetch_one returns Option<T>, handle the None case
         match WebserviceRequest::fetch_one::<OrderBooksResponse>(&client, &ws_request).await {
-            Some(books) => {
+            Ok(books) => {
                 log::debug!("Successfully fetched {} order books", books.len());
                 Ok(books)
             }
-            None => {
-                Err(crate::api::error::ApiError::UnexpectedStatus {
-                    status: 0,
-                    url: format!("{}{}", CLOB_API, GET_ORDER_BOOKS),
-                    message: format!("Failed to fetch order books for {} tokens after retries", query_items.len()),
-                    response_body: String::new(),
-                }.into())
+            Err(e) => {
+                log::error!("Failed to fetch order books: {}", e);
+                Err(e)
             }
         }
     }
@@ -364,6 +360,7 @@ mod tests {
     /// 4. Queries order books for all token IDs
     #[tokio::test]
     async fn test_fetch_orderbooks_for_sol_15m_current_event() {
+        use crate::api::clob_endpoints::{GAMMA_API, GET_EVENT_SERIES};
         use crate::api::event_requests::EventBySlugRequest;
         use crate::{EventSeriesResponse, WebserviceRequest};
         use chrono::Utc;
@@ -372,13 +369,22 @@ mod tests {
 
         // Step 1: Fetch the event series to find the current event
         println!("Fetching event series: {}", event_series_slug);
-        let ws_request = WebserviceRequest::new_event_series_request(event_series_slug);
+        let mut ws_request = WebserviceRequest {
+            api: GAMMA_API.to_string(),
+            url: GET_EVENT_SERIES.to_string(),
+            method: Method::GET,
+            with_pagination: true,
+            args: Vec::new(),
+            body: None,
+        };
+        ws_request.add_arg("slug".to_string(), event_series_slug.to_string());
         let client = crate::api::http_client::get_http_client(None);
 
-        let (_, event_series_opt) =
-            WebserviceRequest::fetch_batch::<EventSeriesResponse>(client, &ws_request, 0).await;
+        let (_, event_series) =
+            WebserviceRequest::fetch_batch::<EventSeriesResponse>(client, &ws_request, 0)
+                .await
+                .expect("Failed to fetch event series");
 
-        let event_series = event_series_opt.expect("Failed to fetch event series");
         assert!(!event_series.is_empty(), "Event series response is empty");
 
         let series = &event_series[0];

@@ -2,14 +2,12 @@
 //!
 //! This module provides generic functions for making HTTP requests to the Polymarket API
 //! with automatic retry logic and error handling.
+use crate::api::response_handler::handle_api_response;
 use reqwest::{Client, Method};
-use std::time::Duration;
-use tokio::time::sleep;
 
 use crate::models::ApiResponse;
 
-const MAX_RETRIES: u32 = 3;
-const RETRY_DELAY_MS: u64 = 2000;
+
 
 /// Represents an HTTP request to the Polymarket API
 pub struct WebserviceRequest {
@@ -90,9 +88,9 @@ impl WebserviceRequest {
     ///     body: None,
     /// };
     ///
-    /// let (next_offset, markets) = WebserviceRequest::fetch_batch::<MarketsResponse>(&client, &request, 0).await;
-    /// if let Some(data) = markets {
-    ///     println!("Retrieved {} markets", data.len());
+    /// let (next_offset, markets) = WebserviceRequest::fetch_batch::<MarketsResponse>(&client, &request, 0).await?;
+    /// if !markets.is_empty() {
+    ///     println!("Retrieved {} markets", markets.len());
     /// }
     /// # Ok(())
     /// # }
@@ -138,14 +136,13 @@ impl WebserviceRequest {
             .await
             .map_err(|e| crate::HttpError::from_reqwest(e, &callable_url))?;
 
-        let response_text = crate::handle_api_response(response, &callable_url).await?;
+        let response_text = handle_api_response(response, &callable_url).await?;
 
         let ws_response: T = serde_json::from_str(&response_text).map_err(|e| {
-            crate::SerializationError::JsonDeserialize {
+            crate::ClobError::from(crate::SerializationError::JsonDeserialize {
                 message: e.to_string(),
-                raw_response: response_text,
-            }
-            .into()
+                raw_response: response_text.clone(),
+            })
         })?;
 
         let nb_results_retrieved = ws_response.nb_results() as i32;
@@ -191,10 +188,8 @@ impl WebserviceRequest {
     ///     body: None,
     /// };
     ///
-    /// let market = WebserviceRequest::fetch_one::<PolyResponseMarket>(&client, &request).await;
-    /// if let Some(m) = market {
-    ///     println!("Found market: {:?}", m.question);
-    /// }
+    /// let market = WebserviceRequest::fetch_one::<PolyResponseMarket>(&client, &request).await?;
+    /// println!("Found market: {:?}", market.question);
     /// # Ok(())
     /// # }
     /// ```
@@ -234,14 +229,13 @@ impl WebserviceRequest {
             .await
             .map_err(|e| crate::HttpError::from_reqwest(e, &callable_url))?;
 
-        let response_text = crate::handle_api_response(response, &callable_url).await?;
+        let response_text = handle_api_response(response, &callable_url).await?;
 
         serde_json::from_str::<T>(&response_text).map_err(|e| {
-            crate::SerializationError::JsonDeserialize {
+            crate::ClobError::from(crate::SerializationError::JsonDeserialize {
                 message: e.to_string(),
-                raw_response: response_text,
-            }
-            .into()
+                raw_response: response_text.clone(),
+            })
         })
     }
 

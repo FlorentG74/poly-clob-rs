@@ -7,7 +7,7 @@ use crate::api::relayer::auth::BuilderCredentials;
 use crate::api::relayer::client::RelayerClient;
 use crate::api::relayer::transactions::{create_redeem_tx, RedeemParams};
 use crate::api::relayer::types::{RelayerTransactionResponse, RelayerTxType};
-use crate::{Account, ClobError, Result};
+use crate::{Account, Result};
 use typed_builder::TypedBuilder;
 
 /// Represents a settlement/redemption request for an expired market.
