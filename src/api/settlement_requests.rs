@@ -1,162 +1,131 @@
-//! Settlement and Redemption API Requests
+//! Settlement requests for redeeming positions from resolved markets.
 //!
-//! This module provides functionality for settling/redeeming positions on Polymarket
-//! when markets expire and resolve.
-//!
-//! ## Polymarket Settlement Process
-//!
-//! When a Polymarket binary option market resolves:
-//! 1. The winning outcome tokens become redeemable for $1 USDC each
-//! 2. The losing outcome tokens become worthless ($0)
-//! 3. Users can redeem their winning tokens via the Polymarket contract
-//!
-//! ## API Endpoints (Placeholder)
-//!
-//! The actual Polymarket settlement occurs on-chain via the CTF Exchange contract.
-//! Users need to call `redeemPositions` on the contract to convert winning tokens to USDC.
-//!
-//! Contract addresses:
-//! - Polygon Mainnet: 0x4D97DCd97eC945f40cF65F87097ACe5EA0476045 (CTF Exchange)
-//! - See: https://docs.polymarket.com/#settlement
+//! This module provides a way to submit gasless settlement transactions
+//! via the Polymarket Relayer API.
 
-use crate::Account;
-use anyhow::{anyhow, Result};
+use crate::api::relayer::auth::BuilderCredentials;
+use crate::api::relayer::client::RelayerClient;
+use crate::api::relayer::transactions::{create_redeem_tx, RedeemParams};
+use crate::api::relayer::types::{RelayerTransactionResponse, RelayerTxType};
+use crate::{Account, ClobError, Result};
+use typed_builder::TypedBuilder;
 
-/// Represents a settlement/redemption request for expired market positions
-#[derive(Debug, Clone)]
+/// Represents a settlement/redemption request for an expired market.
+///
+/// This request will be submitted to the Relayer API to execute a gasless
+/// `redeemPositions` transaction on the CTF contract.
+#[derive(Debug, Clone, TypedBuilder)]
 pub struct SettlementRequest {
-    /// The account to settle positions for
-    pub account: Account,
-    /// Condition ID of the resolved market
+    /// The condition ID of the market to redeem from.
     pub condition_id: String,
-    /// Token IDs to redeem (winning tokens)
-    pub token_ids: Vec<String>,
-}
-
-/// Result of a settlement operation
-#[derive(Debug, Clone)]
-pub struct SettlementResponse {
-    /// Whether the settlement was successful
-    pub success: bool,
-    /// Transaction hash (if on-chain settlement)
-    pub tx_hash: Option<String>,
-    /// Amount of USDC received from settlement
-    pub usdc_amount: f64,
-    /// Error message if failed
-    pub error: Option<String>,
+    /// The winning outcome index (0 for YES/UP, 1 for NO/DOWN).
+    pub winning_outcome_index: u8,
 }
 
 impl SettlementRequest {
-    /// Create a new settlement request
-    pub fn new(account: Account, condition_id: &str, token_ids: Vec<String>) -> Self {
-        Self {
-            account,
-            condition_id: condition_id.to_string(),
-            token_ids,
-        }
-    }
-
-    /// Execute the settlement (PLACEHOLDER - not implemented)
+    /// Executes the settlement request via the Relayer API.
+    ///
+    /// This function creates a `RelayerClient`, builds a `redeemPositions`
+    /// transaction, submits it, and returns the relayer's response.
+    ///
+    /// # Arguments
+    ///
+    /// * `account` - The account containing the signer address. Builder credentials
+    ///             must be available in environment variables.
     ///
     /// # Returns
-    /// Returns an error indicating this is not yet implemented.
     ///
-    /// # Implementation Notes
-    /// To implement actual settlement:
-    /// 1. Connect to Polygon RPC
-    /// 2. Build transaction to CTF Exchange contract
-    /// 3. Call `redeemPositions(conditionId, amounts)`
-    /// 4. Sign and submit transaction
-    /// 5. Wait for confirmation
-    pub async fn execute(&self) -> Result<SettlementResponse> {
-        // PLACEHOLDER: Actual implementation would interact with Polymarket's
-        // CTF Exchange contract on Polygon to redeem winning positions.
-        //
-        // The contract call would be something like:
-        // ctfExchange.redeemPositions(
-        //     conditionId,
-        //     indexSets,  // Which outcomes to redeem
-        //     amounts     // How much of each to redeem
-        // )
-
-        log::warn!(
-            "Settlement not implemented for live trading. \
-             Condition: {}, Tokens: {:?}. \
-             Please manually redeem positions on Polymarket.",
+    /// A `Result` containing the `RelayerTransactionResponse` on success.
+    ///
+    /// # Errors
+    ///
+    /// This function can return several error types, including:
+    /// - `ClobError::Auth` if builder credentials are not found.
+    /// - `ClobError::Validation` if the transaction parameters are invalid.
+    /// - `ClobError::Http` for network issues.
+    /// - `ClobError::Api` for relayer API errors.
+    pub async fn execute(
+        &self,
+        account: &Account,
+    ) -> Result<RelayerTransactionResponse> {
+        log::info!(
+            "Executing settlement for condition_id: {} with winning outcome: {}",
             self.condition_id,
-            self.token_ids
+            self.winning_outcome_index
         );
 
-        Err(anyhow!(
-            "Live settlement not implemented. Please redeem positions manually on Polymarket. \
-             Condition ID: {}",
-            self.condition_id
-        ))
+        // Builder credentials must be in the environment
+        let creds = BuilderCredentials::from_env()?;
+
+        // Use the account's poly_address as the signer
+        let client = RelayerClient::builder()
+            .credentials(creds)
+            .signer_address(account.poly_address.clone())
+            .tx_type(RelayerTxType::Safe) // Safe is the standard for most users
+            .build();
+
+        // Create the redeem transaction
+        let redeem_tx = create_redeem_tx(&RedeemParams {
+            condition_id: self.condition_id.clone(),
+            outcome_index: Some(self.winning_outcome_index),
+        })?;
+
+        log::info!("Submitting redeem transaction via relayer...");
+
+        // Submit the transaction
+        let response = client.submit(vec![redeem_tx]).await?;
+
+        log::info!(
+            "Settlement transaction submitted successfully. Transaction ID: {}",
+            response.transaction_id
+        );
+
+        Ok(response)
     }
 
-    /// Check if a market is eligible for settlement
+    /// Check if a market is eligible for settlement.
     ///
-    /// A market is eligible for settlement when:
-    /// 1. The market has resolved (closed=true)
-    /// 2. The user holds winning tokens
-    pub async fn is_eligible_for_settlement(&self) -> Result<bool> {
-        // PLACEHOLDER: Would query Polymarket API to check:
-        // 1. Market resolution status
-        // 2. User's token balances
-        // 3. Whether tokens are redeemable
-
-        log::debug!(
-            "Settlement eligibility check not implemented for condition {}",
-            self.condition_id
-        );
-
-        Ok(false)
+    /// NOTE: This is a placeholder. A real implementation would check the market's
+    /// state (e.g., via `get_market_by_id`) to ensure it's resolved.
+    pub fn is_eligible(&self) -> bool {
+        // Placeholder - a real implementation would query market state
+        true
     }
-}
-
-/// Helper function to check if a position can be redeemed
-///
-/// # Arguments
-/// * `condition_id` - The market's condition ID
-/// * `token_id` - The token to check
-/// * `outcome_price` - The current outcome price (1.0 for winners, 0.0 for losers)
-///
-/// # Returns
-/// `true` if the token is a winning position that can be redeemed
-pub fn is_redeemable(outcome_price: f64) -> bool {
-    // A token is redeemable if it's a winning outcome (price >= 0.99)
-    outcome_price >= 0.99
-}
-
-/// Estimate the USDC value of settling a position
-///
-/// # Arguments
-/// * `quantity` - Number of tokens held
-/// * `outcome_price` - Settlement price (1.0 for winners, 0.0 for losers)
-///
-/// # Returns
-/// The expected USDC value after settlement
-pub fn estimate_settlement_value(quantity: f64, outcome_price: f64) -> f64 {
-    quantity * outcome_price
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    // use super::*;
+    // use crate::Account;
+    // use std::env;
 
-    #[test]
-    fn test_is_redeemable() {
-        assert!(is_redeemable(1.0));
-        assert!(is_redeemable(0.99));
-        assert!(!is_redeemable(0.98));
-        assert!(!is_redeemable(0.5));
-        assert!(!is_redeemable(0.0));
-    }
-
-    #[test]
-    fn test_estimate_settlement_value() {
-        assert_eq!(estimate_settlement_value(100.0, 1.0), 100.0);
-        assert_eq!(estimate_settlement_value(100.0, 0.0), 0.0);
-        assert_eq!(estimate_settlement_value(50.0, 1.0), 50.0);
-    }
+    // #[tokio::test]
+    // #[ignore] // Ignored because it requires valid env vars and a settled market
+    // async fn test_settlement_execute() {
+    //     // This test requires the following environment variables to be set:
+    //     // POLY_BUILDER_API_KEY, POLY_BUILDER_API_SECRET, POLY_BUILDER_API_PASSPHRASE
+    //     // and a valid Account configuration.
+    //
+    //     // Also requires a real, settled market condition ID and its winning outcome.
+    //     let condition_id = "0x...".to_string();
+    //     let winning_outcome = 0;
+    //
+    //     let account = Account {
+    //          poly_address: env::var("POLY_ADDRESS").unwrap(),
+    //          // other account fields can be dummy for this test if not used by relayer client directly
+    //          ..Default::default()
+    //     };
+    //
+    //     let request = SettlementRequest::builder()
+    //         .condition_id(condition_id)
+    //         .winning_outcome_index(winning_outcome)
+    //         .build();
+    //
+    //     let result = request.execute(&account).await;
+    //
+    //     println!("Settlement result: {:?}", result);
+    //     assert!(result.is_ok());
+    //     let response = result.unwrap();
+    //     assert!(!response.transaction_id.is_empty());
+    // }
 }
