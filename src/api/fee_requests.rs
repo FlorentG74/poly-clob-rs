@@ -1,5 +1,5 @@
 //! Fee rate request.
-use anyhow::{Context, Result};
+use crate::api::error::Result;
 use serde::Deserialize;
 use reqwest::Method;
 
@@ -36,9 +36,13 @@ pub async fn get_fee_rate(token_id: &str) -> Result<FeeRate> {
     };
     request.add_arg("token_id".to_string(), token_id.to_string());
 
+    let callable_url = request.get_callable_url(0);
     WebserviceRequest::fetch_one::<FeeRate>(client, &request)
         .await
-        .context("Failed to fetch fee rate")
+        .ok_or_else(|| crate::api::error::ApiError::NotFound {
+            url: callable_url,
+            resource: format!("fee rate for token_id: {}", token_id),
+        }.into())
 }
 
 #[cfg(test)]

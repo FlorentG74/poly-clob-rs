@@ -7,8 +7,8 @@
 //! It also provides EIP-712 typed data signing for transaction requests.
 
 use crate::api::auth::clob_auth::{build_hmac_signature, get_timestamp};
+use crate::api::error::{AuthError, Result};
 use alloy::primitives::{keccak256, Address, B256, Bytes};
-use anyhow::{Context, Result};
 use reqwest::header::HeaderMap;
 
 /// Builder API credentials for authenticating with the relayer.
@@ -44,11 +44,17 @@ impl BuilderCredentials {
 
         Ok(Self {
             api_key: env::var("POLY_BUILDER_API_KEY")
-                .context("missing POLY_BUILDER_API_KEY env var")?,
+                .map_err(|_| AuthError::MissingEnvVar {
+                    var_name: "POLY_BUILDER_API_KEY".to_string(),
+                })?,
             api_secret: env::var("POLY_BUILDER_API_SECRET")
-                .context("missing POLY_BUILDER_API_SECRET env var")?,
+                .map_err(|_| AuthError::MissingEnvVar {
+                    var_name: "POLY_BUILDER_API_SECRET".to_string(),
+                })?,
             api_passphrase: env::var("POLY_BUILDER_API_PASSPHRASE")
-                .context("missing POLY_BUILDER_API_PASSPHRASE env var")?,
+                .map_err(|_| AuthError::MissingEnvVar {
+                    var_name: "POLY_BUILDER_API_PASSPHRASE".to_string(),
+                })?,
         })
     }
 }
@@ -103,26 +109,34 @@ pub fn build_builder_headers_with_timestamp(
         creds
             .api_key
             .parse()
-            .context("invalid POLY_BUILDER_API_KEY header value")?,
+            .map_err(|_| AuthError::HeaderBuildFailed {
+                message: "invalid POLY_BUILDER_API_KEY header value".to_string(),
+            })?,
     );
     headers.insert(
         "POLY_BUILDER_PASSPHRASE",
         creds
             .api_passphrase
             .parse()
-            .context("invalid POLY_BUILDER_PASSPHRASE header value")?,
+            .map_err(|_| AuthError::HeaderBuildFailed {
+                message: "invalid POLY_BUILDER_PASSPHRASE header value".to_string(),
+            })?,
     );
     headers.insert(
         "POLY_BUILDER_TIMESTAMP",
         timestamp
             .parse()
-            .context("invalid POLY_BUILDER_TIMESTAMP header value")?,
+            .map_err(|_| AuthError::HeaderBuildFailed {
+                message: "invalid POLY_BUILDER_TIMESTAMP header value".to_string(),
+            })?,
     );
     headers.insert(
         "POLY_BUILDER_SIGNATURE",
         signature
             .parse()
-            .context("invalid POLY_BUILDER_SIGNATURE header value")?,
+            .map_err(|_| AuthError::HeaderBuildFailed {
+                message: "invalid POLY_BUILDER_SIGNATURE header value".to_string(),
+            })?,
     );
 
     Ok(headers)

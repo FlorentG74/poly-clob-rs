@@ -1,5 +1,5 @@
 use crate::api::relayer::SignatureType;
-use anyhow::{Context, Result};
+use crate::api::error::{Result, AuthError};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -78,12 +78,18 @@ impl Account {
             .unwrap_or(SignatureType::PolyProxy);
 
         Ok(Account {
-            poly_address: env::var("POLY_ADDRESS").context("missing POLY_ADDRESS env var")?,
-            pub_key: env::var("PUB_KEY").context("missing PUB_KEY env var")?,
-            private_key: env::var("PRIVATE_KEY").context("missing PRIVATE_KEY env var")?,
-            api_key: env::var("API_KEY").context("missing API_KEY env var")?,
-            api_secret: env::var("API_SECRET").context("missing API_SECRET env var")?,
-            api_passphrase: env::var("API_PASSPHRASE").context("missing API_PASSPHRASE env var")?,
+            poly_address: env::var("POLY_ADDRESS")
+                .map_err(|_| AuthError::MissingEnvVar { var_name: "POLY_ADDRESS".to_string() })?,
+            pub_key: env::var("PUB_KEY")
+                .map_err(|_| AuthError::MissingEnvVar { var_name: "PUB_KEY".to_string() })?,
+            private_key: env::var("PRIVATE_KEY")
+                .map_err(|_| AuthError::MissingEnvVar { var_name: "PRIVATE_KEY".to_string() })?,
+            api_key: env::var("API_KEY")
+                .map_err(|_| AuthError::MissingEnvVar { var_name: "API_KEY".to_string() })?,
+            api_secret: env::var("API_SECRET")
+                .map_err(|_| AuthError::MissingEnvVar { var_name: "API_SECRET".to_string() })?,
+            api_passphrase: env::var("API_PASSPHRASE")
+                .map_err(|_| AuthError::MissingEnvVar { var_name: "API_PASSPHRASE".to_string() })?,
             account_type: AccountType::PolymarketAccount,
             telegram_chat_id: telegram.chat_id,
             telegram_bot_token: telegram.bot_token,

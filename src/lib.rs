@@ -112,3 +112,9 @@ pub mod models;
 // Re-export commonly used items for convenience
 pub use api::*;
 pub use models::*;
+
+// Re-export error types for ergonomic error handling
+pub use api::error::{
+    ApiError, AuthError, ClobError, HttpError, RelayerError, Result, SerializationError,
+    ValidationError,
+};

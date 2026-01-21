@@ -43,7 +43,7 @@
 //! # }
 //! ```
 
-use anyhow::{Context, Result};
+use crate::api::error::{Result, SerializationError, ValidationError};
 use reqwest::Method;
 use serde::Serialize;
 use typed_builder::TypedBuilder;
@@ -177,18 +177,23 @@ impl<'a> OrderBooksRequest<'a> {
         }
 
         if query_items.is_empty() {
-            anyhow::bail!("OrderBooksRequest requires at least one token_id");
+            return Err(ValidationError::InvalidParameter {
+                parameter: "token_ids".to_string(),
+                reason: "OrderBooksRequest requires at least one token_id".to_string(),
+            }.into());
         }
 
         if query_items.len() > 500 {
-            anyhow::bail!(
-                "OrderBooksRequest accepts a maximum of 500 items, got {}",
-                query_items.len()
-            );
+            return Err(ValidationError::InvalidParameter {
+                parameter: "token_ids".to_string(),
+                reason: format!("OrderBooksRequest accepts a maximum of 500 items, got {}", query_items.len()),
+            }.into());
         }
 
         let body = serde_json::to_string(&query_items)
-            .context("failed to serialize request body")?;
+            .map_err(|e| SerializationError::JsonSerialize {
+                message: e.to_string(),
+            })?;
 
         // Enhanced logging with token count
         log::debug!(
@@ -224,10 +229,12 @@ impl<'a> OrderBooksRequest<'a> {
                 Ok(books)
             }
             None => {
-                anyhow::bail!(
-                    "Failed to fetch order books for {} tokens after retries",
-                    query_items.len()
-                )
+                Err(crate::api::error::ApiError::UnexpectedStatus {
+                    status: 0,
+                    url: format!("{}{}", CLOB_API, GET_ORDER_BOOKS),
+                    message: format!("Failed to fetch order books for {} tokens after retries", query_items.len()),
+                    response_body: String::new(),
+                }.into())
             }
         }
     }

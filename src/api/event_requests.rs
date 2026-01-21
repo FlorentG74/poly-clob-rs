@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use crate::api::error::Result;
 use reqwest::Method;
 use typed_builder::TypedBuilder;
 
@@ -52,14 +52,21 @@ impl<'a> EventBySlugRequest<'a> {
             body: None,
         };
 
+        let callable_url = web_service_request.get_callable_url(0);
         let events = WebserviceRequest::fetch_one::<Vec<PolyResponseEvent>>(
             &client,
             &web_service_request
         )
         .await
-        .with_context(|| format!("event not found for slug: {}", self.slug))?;
+        .ok_or_else(|| crate::api::error::ApiError::NotFound {
+            url: callable_url.clone(),
+            resource: format!("event with slug: {}", self.slug),
+        })?;
 
         events.into_iter().next()
-            .with_context(|| format!("no event returned for slug: {}", self.slug))
+            .ok_or_else(|| crate::api::error::ApiError::NotFound {
+                url: callable_url,
+                resource: format!("event with slug: {}", self.slug),
+            }.into())
     }
 }

@@ -1,5 +1,6 @@
 use alloy::{dyn_abi::DynSolValue, primitives::B256};
-use anyhow::Result;
+
+use crate::api::error::Result;
 
 pub trait EIP712Struct {
     fn get_domain_type_hash(&self) -> B256;

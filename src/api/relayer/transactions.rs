@@ -4,8 +4,8 @@
 //! CTF operations like redeeming positions, converting tokens, etc.
 
 use super::types::Transaction;
+use crate::api::error::{Result, ValidationError};
 use alloy::primitives::{Address, Bytes, B256, U256};
-use anyhow::{Context, Result};
 
 /// Polygon mainnet contract addresses for Polymarket.
 pub mod contracts {
@@ -80,7 +80,10 @@ pub fn create_redeem_tx(params: &RedeemParams) -> Result<Transaction> {
     let condition_id: B256 = params
         .condition_id
         .parse()
-        .context("invalid condition_id format, expected 0x-prefixed bytes32")?;
+        .map_err(|_| ValidationError::InvalidParameter {
+            parameter: "condition_id".to_string(),
+            reason: "invalid format, expected 0x-prefixed bytes32".to_string(),
+        })?;
 
     // Parent collection ID is always zero for Polymarket markets
     let parent_collection_id = B256::ZERO;
@@ -95,10 +98,16 @@ pub fn create_redeem_tx(params: &RedeemParams) -> Result<Transaction> {
     // Parse contract addresses
     let ctf_address: Address = contracts::CTF_CONTRACT
         .parse()
-        .context("invalid CTF contract address")?;
+        .map_err(|_| ValidationError::InvalidParameter {
+            parameter: "CTF_CONTRACT".to_string(),
+            reason: "invalid CTF contract address".to_string(),
+        })?;
     let usdc_address: Address = contracts::USDC_E_CONTRACT
         .parse()
-        .context("invalid USDC.e contract address")?;
+        .map_err(|_| ValidationError::InvalidParameter {
+            parameter: "USDC_E_CONTRACT".to_string(),
+            reason: "invalid USDC.e contract address".to_string(),
+        })?;
 
     // Encode the function call:
     // redeemPositions(address collateralToken, bytes32 parentCollectionId, bytes32 conditionId, uint256[] indexSets)

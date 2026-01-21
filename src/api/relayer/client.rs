@@ -13,9 +13,11 @@ use super::types::{
     RelayerTransactionResponse, RelayerTransactionState, RelayerTxType, SafeTransaction,
     SignatureType, Transaction, TransactionSubmitRequest, SignatureParamsRequest,
 };
+use crate::api::error::{
+    ApiError, AuthError, HttpError, RelayerError, Result, SerializationError, ValidationError,
+};
 use crate::api::http_client::get_http_client;
 use alloy::primitives::Address;
-use anyhow::{bail, Context, Result};
 use hex;
 use std::time::Duration;
 use typed_builder::TypedBuilder;
@@ -133,17 +135,33 @@ impl RelayerClient {
             .headers(headers)
             .send()
             .await
-            .context("failed to send get_nonce request")?;
+            .map_err(|e| HttpError::from_reqwest(e, &url))?;
 
         let status = response.status();
-        let body = response.text().await.unwrap_or_default();
+        let body = response
+            .text()
+            .await
+            .map_err(|e| HttpError::ReadBody {
+                url: url.clone(),
+                message: e.to_string(),
+            })?;
 
         if !status.is_success() {
-            bail!("get_nonce failed with status {}: {}", status, body);
+            return Err(ApiError::UnexpectedStatus {
+                status: status.as_u16(),
+                url,
+                message: "get_nonce failed".to_string(),
+                response_body: body,
+            }
+            .into());
         }
 
-        let nonce_response: NonceResponse = serde_json::from_str(&body)
-            .with_context(|| format!("failed to parse nonce response: {}", body))?;
+        let nonce_response: NonceResponse = serde_json::from_str(&body).map_err(|e| {
+            SerializationError::JsonDeserialize {
+                message: e.to_string(),
+                raw_response: body.clone(),
+            }
+        })?;
 
         Ok(nonce_response.nonce)
     }
@@ -160,18 +178,32 @@ impl RelayerClient {
             .headers(headers)
             .send()
             .await
-            .context("failed to send get_deployed request")?;
+            .map_err(|e| HttpError::from_reqwest(e, &url))?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            bail!("get_deployed failed with status {}: {}", status, body);
+        let status = response.status();
+        if !status.is_success() {
+            let body = response
+                .text()
+                .await
+                .map_err(|e| HttpError::ReadBody {
+                    url: url.clone(),
+                    message: e.to_string(),
+                })?;
+            return Err(ApiError::UnexpectedStatus {
+                status: status.as_u16(),
+                url,
+                message: "get_deployed failed".to_string(),
+                response_body: body,
+            }
+            .into());
         }
 
-        let deployed_response: DeployedResponse = response
-            .json()
-            .await
-            .context("failed to parse deployed response")?;
+        let deployed_response: DeployedResponse = response.json().await.map_err(|e| {
+            SerializationError::JsonDeserialize {
+                message: e.to_string(),
+                raw_response: String::new(),
+            }
+        })?;
 
         Ok(deployed_response.deployed)
     }
@@ -191,18 +223,33 @@ impl RelayerClient {
             .headers(headers)
             .send()
             .await
-            .context("failed to send get_transaction request")?;
+            .map_err(|e| HttpError::from_reqwest(e, &url))?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            bail!("get_transaction failed with status {}: {}", status, body);
+        let status = response.status();
+        if !status.is_success() {
+            let body = response
+                .text()
+                .await
+                .map_err(|e| HttpError::ReadBody {
+                    url: url.clone(),
+                    message: e.to_string(),
+                })?;
+            return Err(ApiError::UnexpectedStatus {
+                status: status.as_u16(),
+                url,
+                message: "get_transaction failed".to_string(),
+                response_body: body,
+            }
+            .into());
         }
 
-        response
-            .json()
-            .await
-            .context("failed to parse transaction response")
+        response.json().await.map_err(|e| {
+            SerializationError::JsonDeserialize {
+                message: e.to_string(),
+                raw_response: String::new(),
+            }
+            .into()
+        })
     }
 
     /// Get all transactions for the authenticated builder.
@@ -217,18 +264,33 @@ impl RelayerClient {
             .headers(headers)
             .send()
             .await
-            .context("failed to send get_transactions request")?;
+            .map_err(|e| HttpError::from_reqwest(e, &url))?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            bail!("get_transactions failed with status {}: {}", status, body);
+        let status = response.status();
+        if !status.is_success() {
+            let body = response
+                .text()
+                .await
+                .map_err(|e| HttpError::ReadBody {
+                    url: url.clone(),
+                    message: e.to_string(),
+                })?;
+            return Err(ApiError::UnexpectedStatus {
+                status: status.as_u16(),
+                url,
+                message: "get_transactions failed".to_string(),
+                response_body: body,
+            }
+            .into());
         }
 
-        response
-            .json()
-            .await
-            .context("failed to parse transactions response")
+        response.json().await.map_err(|e| {
+            SerializationError::JsonDeserialize {
+                message: e.to_string(),
+                raw_response: String::new(),
+            }
+            .into()
+        })
     }
 
     /// Submit transactions to the relayer.
@@ -244,7 +306,12 @@ impl RelayerClient {
             }
             RelayerTxType::Proxy => {
                 if transactions.len() != 1 {
-                    bail!("Proxy transactions only support a single transaction at a time");
+                    return Err(ValidationError::InvalidParameter {
+                        parameter: "transactions".to_string(),
+                        reason: "Proxy transactions only support a single transaction at a time"
+                            .to_string(),
+                    }
+                    .into());
                 }
                 let proxy_tx: ProxyTransaction = transactions.into_iter().next().unwrap().into();
                 self.submit_proxy(proxy_tx).await
@@ -261,15 +328,20 @@ impl RelayerClient {
         transactions: Vec<SafeTransaction>,
     ) -> Result<RelayerTransactionResponse> {
         if transactions.is_empty() {
-            bail!("cannot submit empty transaction list");
+            return Err(ValidationError::InvalidParameter {
+                parameter: "transactions".to_string(),
+                reason: "cannot submit empty transaction list".to_string(),
+            }
+            .into());
         }
 
         let nonce = self.get_nonce().await?;
 
-        let sender: Address = self
-            .signer_address
-            .parse()
-            .context("invalid signer address")?;
+        let sender: Address = self.signer_address.parse().map_err(|_| {
+            AuthError::InvalidAddress {
+                address: self.signer_address.clone(),
+            }
+        })?;
 
         // For now, we can only submit single transactions via this format
         // TODO: Implement EIP-712 signing to properly batch transactions
@@ -317,14 +389,23 @@ impl RelayerClient {
                         refund_receiver: Address::ZERO,
                     },
                     metadata: None,
+                })
+                .map_err(|e| SerializationError::JsonSerialize {
+                    message: e.to_string(),
                 })?
             };
 
-            let body = serde_json::to_string(&req).context("failed to serialize transaction request")?;
-            log::debug!("Submitting request:\n{}", serde_json::to_string_pretty(&req).unwrap_or_default());
+            let body = serde_json::to_string(&req).map_err(|e| SerializationError::JsonSerialize {
+                message: e.to_string(),
+            })?;
+            log::debug!(
+                "Submitting request:\n{}",
+                serde_json::to_string_pretty(&req).unwrap_or_default()
+            );
 
             let url = format!("{}{}", self.base_url, SUBMIT_TRANSACTION);
-            let headers = build_builder_headers(&self.credentials, "POST", SUBMIT_TRANSACTION, &body)?;
+            let headers =
+                build_builder_headers(&self.credentials, "POST", SUBMIT_TRANSACTION, &body)?;
 
             let client = get_http_client(Some(&url));
             let response = client
@@ -334,22 +415,43 @@ impl RelayerClient {
                 .body(body.clone())
                 .send()
                 .await
-                .context("failed to send submit_safe request")?;
+                .map_err(|e| HttpError::from_reqwest(e, &url))?;
 
             let status = response.status();
-            let body_text = response.text().await.unwrap_or_default();
+            let body_text = response
+                .text()
+                .await
+                .map_err(|e| HttpError::ReadBody {
+                    url: url.clone(),
+                    message: e.to_string(),
+                })?;
 
             if !status.is_success() {
                 log::error!("Submit Safe failed with status {}: {}", status, body_text);
-                bail!("submit_safe failed with status {}: {}", status, body_text);
+                return Err(ApiError::UnexpectedStatus {
+                    status: status.as_u16(),
+                    url,
+                    message: "submit_safe failed".to_string(),
+                    response_body: body_text,
+                }
+                .into());
             }
 
             // Return the first successful response (TODO: collect all responses if batching)
-            return serde_json::from_str(&body_text)
-                .with_context(|| format!("failed to parse submit response: {}", body_text));
+            return serde_json::from_str(&body_text).map_err(|e| {
+                SerializationError::JsonDeserialize {
+                    message: e.to_string(),
+                    raw_response: body_text.clone(),
+                }
+                .into()
+            });
         }
 
-        bail!("no transactions to submit");
+        Err(ValidationError::InvalidParameter {
+            parameter: "transactions".to_string(),
+            reason: "no transactions to submit".to_string(),
+        }
+        .into())
     }
 
     /// Submit a Proxy transaction to the relayer.
@@ -361,10 +463,11 @@ impl RelayerClient {
     ) -> Result<RelayerTransactionResponse> {
         let nonce = self.get_nonce().await?;
 
-        let sender: Address = self
-            .signer_address
-            .parse()
-            .context("invalid signer address")?;
+        let sender: Address = self.signer_address.parse().map_err(|_| {
+            AuthError::InvalidAddress {
+                address: self.signer_address.clone(),
+            }
+        })?;
 
         // For proxy, we need to encode the transaction data differently
         let args = ProxyTransactionArgs {
@@ -376,7 +479,9 @@ impl RelayerClient {
             relayer: Address::ZERO, // Let relayer fill in
         };
 
-        let body = serde_json::to_string(&args).context("failed to serialize proxy transaction")?;
+        let body = serde_json::to_string(&args).map_err(|e| SerializationError::JsonSerialize {
+            message: e.to_string(),
+        })?;
         let url = format!("{}{}", self.base_url, SUBMIT_TRANSACTION);
 
         let headers = build_builder_headers(&self.credentials, "POST", SUBMIT_TRANSACTION, &body)?;
@@ -389,18 +494,33 @@ impl RelayerClient {
             .body(body)
             .send()
             .await
-            .context("failed to send submit_proxy request")?;
+            .map_err(|e| HttpError::from_reqwest(e, &url))?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            bail!("submit_proxy failed with status {}: {}", status, body);
+        let status = response.status();
+        if !status.is_success() {
+            let body = response
+                .text()
+                .await
+                .map_err(|e| HttpError::ReadBody {
+                    url: url.clone(),
+                    message: e.to_string(),
+                })?;
+            return Err(ApiError::UnexpectedStatus {
+                status: status.as_u16(),
+                url,
+                message: "submit_proxy failed".to_string(),
+                response_body: body,
+            }
+            .into());
         }
 
-        response
-            .json()
-            .await
-            .context("failed to parse submit response")
+        response.json().await.map_err(|e| {
+            SerializationError::JsonDeserialize {
+                message: e.to_string(),
+                raw_response: String::new(),
+            }
+            .into()
+        })
     }
 
     /// Poll until a transaction reaches the target state or times out.
@@ -435,6 +555,8 @@ impl RelayerClient {
         max_attempts: u32,
         interval_ms: u64,
     ) -> Result<RelayerTransaction> {
+        let mut last_state: Option<String> = None;
+
         for attempt in 0..max_attempts {
             let tx = self.get_transaction(transaction_id).await?;
 
@@ -446,6 +568,8 @@ impl RelayerClient {
                 tx.state
             );
 
+            last_state = Some(format!("{:?}", tx.state));
+
             if tx.state == target_state {
                 return Ok(tx);
             }
@@ -455,22 +579,21 @@ impl RelayerClient {
                 tx.state,
                 RelayerTransactionState::Failed | RelayerTransactionState::Invalid
             ) {
-                bail!(
-                    "Transaction {} reached terminal state {:?}",
-                    transaction_id,
-                    tx.state
-                );
+                return Err(RelayerError::TransactionFailed {
+                    state: format!("{:?}", tx.state),
+                    message: Some(format!("Transaction {} reached terminal state", transaction_id)),
+                }
+                .into());
             }
 
             tokio::time::sleep(Duration::from_millis(interval_ms)).await;
         }
 
-        bail!(
-            "Polling timed out after {} attempts waiting for transaction {} to reach {:?}",
-            max_attempts,
-            transaction_id,
-            target_state
-        );
+        Err(RelayerError::PollingTimeout {
+            timeout: Duration::from_millis(interval_ms * max_attempts as u64),
+            last_state,
+        }
+        .into())
     }
 }
 

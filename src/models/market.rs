@@ -77,6 +77,7 @@ pub struct PolyResponseMarket {
     pub clear_book_on_start: Option<bool>,
     pub game_start_time: Option<String>,
     pub seconds_delay: Option<i64>,
+    pub event_start_time: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

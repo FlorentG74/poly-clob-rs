@@ -39,14 +39,20 @@ impl SignatureType {
 }
 
 impl FromStr for SignatureType {
-    type Err = anyhow::Error;
+    type Err = crate::api::error::ValidationError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_uppercase().as_str() {
             "EOA" | "0" => Ok(SignatureType::Eoa),
             "POLY_PROXY" | "1" => Ok(SignatureType::PolyProxy),
             "GNOSIS_SAFE" | "2" => Ok(SignatureType::GnosisSafe),
-            _ => Err(anyhow::anyhow!("Invalid signature type: '{}'. Expected one of: EOA, POLY_PROXY, GNOSIS_SAFE, 0, 1, 2", s)),
+            _ => Err(crate::api::error::ValidationError::InvalidParameter {
+                parameter: "signature_type".to_string(),
+                reason: format!(
+                    "invalid signature type '{}'. Expected one of: EOA, POLY_PROXY, GNOSIS_SAFE, 0, 1, 2",
+                    s
+                ),
+            }),
         }
     }
 }

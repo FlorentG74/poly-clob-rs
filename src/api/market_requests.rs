@@ -55,7 +55,7 @@
 
 use std::collections::HashMap;
 
-use anyhow::{Context, Result};
+use crate::api::error::Result;
 use reqwest::Method;
 use typed_builder::TypedBuilder;
 
@@ -204,12 +204,16 @@ impl<'a> MarketBySlugRequest<'a> {
             body: None,
         };
 
+        let callable_url = web_service_request.get_callable_url(0);
         super::webservice_request::WebserviceRequest::fetch_one::<PolyResponseMarket>(
             &client,
             &web_service_request,
         )
         .await
-        .with_context(|| format!("market not found for slug: {}", self.slug))
+        .ok_or_else(|| crate::api::error::ApiError::NotFound {
+            url: callable_url,
+            resource: format!("market with slug: {}", self.slug),
+        }.into())
     }
 }
 
@@ -518,7 +522,10 @@ impl<'a> MarketsRequest<'a> {
         >(&client, &web_service_request, self.offset)
         .await;
 
-        result.context("failed to fetch markets")
+        result.ok_or_else(|| crate::api::error::ApiError::NotFound {
+            url: callable_url,
+            resource: "markets".to_string(),
+        }.into())
     }
 }
 
@@ -563,8 +570,7 @@ pub async fn map_multiple_market_by_condition_ids_ws(
         .condition_ids(condition_id_refs)
         .build()
         .execute()
-        .await
-        .context("failed to load markets by condition IDs")?;
+        .await?;
 
     for m in markets.into_iter() {
         if let Some(condition_id) = m.condition_id.clone() {

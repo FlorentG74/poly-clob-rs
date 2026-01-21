@@ -1,10 +1,10 @@
 use crate::api::auth::EIP712Struct;
+use crate::api::error::{AuthError, Result};
 
 use alloy::{
     dyn_abi::{DynSolType, DynSolValue},
     primitives::{keccak256, Address, B256, U256},
 };
-use anyhow::{Context, Result};
 
 use std::str::FromStr;
 
@@ -65,8 +65,9 @@ impl EIP712Struct for L1Header {
         ]);
 
         let signer = self.get_signer();
-        let address = Address::from_str(signer)
-            .with_context(|| format!("invalid signer address: {signer}"))?;
+        let address = Address::from_str(signer).map_err(|e| AuthError::InvalidAddress {
+            address: format!("{}: {}", signer, e),
+        })?;
 
         Ok(DynSolValue::Tuple(vec![
             DynSolValue::Address(address),

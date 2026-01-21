@@ -4,10 +4,10 @@ use alloy::{
     primitives::{keccak256, Address, B256, U256},
     signers::{local::PrivateKeySigner, Signer as AlloySigner},
 };
-use anyhow::{bail, Context, Result};
 use futures::executor::block_on;
 use std::str::FromStr;
 
+use crate::api::error::{AuthError, Result};
 use crate::Account;
 
 use super::EIP712Struct;
@@ -20,35 +20,52 @@ use reqwest::header::HeaderMap;
 fn generate_values_hash(value: &DynSolValue) -> Result<Vec<u8>> {
     let mut encoded_values: Vec<u8> = Vec::new();
 
-    let tup = value.as_tuple().context("expected tuple value")?;
+    let tup = value
+        .as_tuple()
+        .ok_or_else(|| AuthError::SignatureFailed {
+            message: "expected tuple value".to_string(),
+        })?;
+
     for val in tup {
         log::trace!("Value: {:?}", val);
 
-        let typ = val.as_type().context("failed to get type from value")?;
+        let typ = val.as_type().ok_or_else(|| AuthError::SignatureFailed {
+            message: "failed to get type from value".to_string(),
+        })?;
 
         log::trace!("Type: {}", typ.to_string());
         match typ.to_string().as_str() {
             "string" => {
-                let str = val.as_str().context("expected string value")?;
+                let str = val.as_str().ok_or_else(|| AuthError::SignatureFailed {
+                    message: "expected string value".to_string(),
+                })?;
                 let encoded_str = keccak256(str);
                 log::trace!("Result: {encoded_str}");
                 encoded_values.extend_from_slice(encoded_str.as_slice());
             }
             "uint8" => {
-                let uint8 = val.as_uint().context("expected uint8 value")?;
+                let uint8 = val.as_uint().ok_or_else(|| AuthError::SignatureFailed {
+                    message: "expected uint8 value".to_string(),
+                })?;
                 let x: [u8; 32] = uint8.0.to_be_bytes();
                 let encoded_uint8: [u8; 32] = U256::from_be_slice(&x).to_be_bytes();
                 log::trace!("Result: {:?}", &encoded_uint8);
                 encoded_values.extend_from_slice(&encoded_uint8);
             }
             "uint256" => {
-                let uint256 = val.as_uint().context("expected uint256 value")?;
+                let uint256 = val.as_uint().ok_or_else(|| AuthError::SignatureFailed {
+                    message: "expected uint256 value".to_string(),
+                })?;
                 let x: [u8; 32] = uint256.0.to_be_bytes();
                 log::trace!("Result: {:?}", x);
                 encoded_values.extend_from_slice(&x);
             }
             "address" => {
-                let address: Address = val.as_address().context("expected address value")?;
+                let address: Address =
+                    val.as_address()
+                        .ok_or_else(|| AuthError::SignatureFailed {
+                            message: "expected address value".to_string(),
+                        })?;
                 let address_slice = address.as_slice();
 
                 let encoded_address: [u8; 32] = U256::from_be_slice(address_slice).to_be_bytes();
@@ -56,7 +73,12 @@ fn generate_values_hash(value: &DynSolValue) -> Result<Vec<u8>> {
                 log::trace!("Result: {:?}", encoded_address);
                 encoded_values.extend_from_slice(&encoded_address);
             }
-            other => bail!("unknown EIP712 type: {other}"),
+            other => {
+                return Err(AuthError::SignatureFailed {
+                    message: format!("unknown EIP712 type: {}", other),
+                }
+                .into())
+            }
         }
     }
 
@@ -100,12 +122,16 @@ pub fn build_l1_signature(
     log::trace!("Signable bytes: {:?}", &signable_bytes);
     log::trace!("Message hash: {:?}", &eip712_hash);
 
-    let wallet = PrivateKeySigner::from_str(signer_pk)
-        .context("invalid private key")?;
+    let wallet = PrivateKeySigner::from_str(signer_pk).map_err(|e| AuthError::InvalidPrivateKey {
+        message: e.to_string(),
+    })?;
     log::trace!("\nSigner address: {}", wallet.address());
 
-    let signature = block_on(wallet.sign_hash(&eip712_hash))
-        .context("failed to sign EIP712 hash")?;
+    let signature = block_on(wallet.sign_hash(&eip712_hash)).map_err(|e| {
+        AuthError::SignatureFailed {
+            message: format!("failed to sign EIP712 hash: {}", e),
+        }
+    })?;
     log::trace!("Signature: 0x{}", hex::encode(signature.as_bytes()));
 
     let mut result = "0x".to_string();
@@ -130,15 +156,25 @@ pub fn build_l2_headers(
 
     headers.append(
         "POLY_ADDRESS",
-        poly_address.parse().context("invalid POLY_ADDRESS header")?,
+        poly_address
+            .parse()
+            .map_err(|e| AuthError::HeaderBuildFailed {
+                message: format!("invalid POLY_ADDRESS header: {}", e),
+            })?,
     );
     headers.append(
         "POLY_API_KEY",
-        api_key.parse().context("invalid POLY_API_KEY header")?,
+        api_key.parse().map_err(|e| AuthError::HeaderBuildFailed {
+            message: format!("invalid POLY_API_KEY header: {}", e),
+        })?,
     );
     headers.append(
         "POLY_PASSPHRASE",
-        api_passphrase.parse().context("invalid POLY_PASSPHRASE header")?,
+        api_passphrase
+            .parse()
+            .map_err(|e| AuthError::HeaderBuildFailed {
+                message: format!("invalid POLY_PASSPHRASE header: {}", e),
+            })?,
     );
 
     let timestamp = if salt.is_empty() {
@@ -149,12 +185,20 @@ pub fn build_l2_headers(
 
     headers.append(
         "POLY_TIMESTAMP",
-        timestamp.parse().context("invalid POLY_TIMESTAMP header")?,
+        timestamp
+            .parse()
+            .map_err(|e| AuthError::HeaderBuildFailed {
+                message: format!("invalid POLY_TIMESTAMP header: {}", e),
+            })?,
     );
     let signature = build_hmac_signature(api_secret, &timestamp, method, request_path, body)?;
     headers.append(
         "POLY_SIGNATURE",
-        signature.parse().context("invalid POLY_SIGNATURE header")?,
+        signature
+            .parse()
+            .map_err(|e| AuthError::HeaderBuildFailed {
+                message: format!("invalid POLY_SIGNATURE header: {}", e),
+            })?,
     );
 
     Ok(headers)
@@ -169,14 +213,19 @@ pub fn build_hmac_signature(
 ) -> Result<String> {
     let message = timestamp.to_string() + method + request_path + request_body;
 
-    let b64_decoded_secret = URL_SAFE
-        .decode(api_secret)
-        .context("failed to decode API secret from base64")?;
+    let b64_decoded_secret = URL_SAFE.decode(api_secret).map_err(|e| {
+        AuthError::HeaderBuildFailed {
+            message: format!("failed to decode API secret from base64: {}", e),
+        }
+    })?;
     let b64_decoded_secret_slice = b64_decoded_secret.as_slice();
 
     type HmacSha256 = hmac::Hmac<sha2::Sha256>;
-    let mut mac = HmacSha256::new_from_slice(b64_decoded_secret_slice)
-        .context("failed to create HMAC")?;
+    let mut mac = HmacSha256::new_from_slice(b64_decoded_secret_slice).map_err(|e| {
+        AuthError::HeaderBuildFailed {
+            message: format!("failed to create HMAC: {}", e),
+        }
+    })?;
     mac.update(message.as_bytes());
 
     let bytes = mac.finalize().into_bytes();

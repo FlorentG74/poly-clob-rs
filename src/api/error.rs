@@ -113,6 +113,13 @@ pub enum ClobError {
     /// Relayer-specific error
     #[error("relayer error: {0}")]
     Relayer(#[from] RelayerError),
+
+    /// Feature is not implemented
+    #[error("not implemented: {feature}")]
+    NotImplemented {
+        /// Name of the feature
+        feature: String,
+    },
 }
 
 impl ClobError {
@@ -138,6 +145,7 @@ impl ClobError {
             ClobError::Auth(_) => false,
             ClobError::Validation(_) => false,
             ClobError::Relayer(e) => e.is_retryable(),
+            ClobError::NotImplemented { .. } => false,
         }
     }
 
@@ -198,6 +206,7 @@ impl ClobError {
             ClobError::Api(ApiError::BadRequest { .. }) => true,
             ClobError::Api(ApiError::NotFound { .. }) => true,
             ClobError::Serialization(_) => true,
+            ClobError::NotImplemented { .. } => true,
             _ => false,
         }
     }

@@ -2,7 +2,7 @@
 //!
 //! This module provides functions for fetching user activity from the Polymarket Data API.
 
-use anyhow::{Context, Result};
+use crate::api::error::Result;
 use reqwest::Method;
 use typed_builder::TypedBuilder;
 
@@ -202,7 +202,10 @@ impl<'a> ActivityRequest<'a> {
 
         let result = WebserviceRequest::fetch_one::<UserActivityResponse>(client, &web_service_request)
             .await
-            .context("failed to fetch user activity")?;
+            .ok_or_else(|| crate::api::error::ClobError::from(crate::api::error::ApiError::NotFound {
+                url: callable_url.clone(),
+                resource: "user activity".to_string(),
+            }))?;
 
         Ok(result)
     }

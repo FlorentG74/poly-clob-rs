@@ -1,6 +1,6 @@
 use crate::api::auth::{build_l1_signature, EIP712Struct};
 use crate::models::{OrderType, Side};
-use anyhow::{Context, Result};
+use crate::api::error::{Result, SerializationError, ValidationError};
 use serde::Serialize;
 use typed_builder::TypedBuilder;
 
@@ -57,7 +57,7 @@ struct SignedOrderRequest<'a> {
     signature: String,
 }
 
-fn serialize_as_number<S>(value: &str, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_as_number<S>(value: &str, serializer: S) -> std::result::Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
@@ -68,14 +68,14 @@ where
         .serialize(serializer)
 }
 
-fn serialize_i32_as_string<S>(value: &i32, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_i32_as_string<S>(value: &i32, serializer: S) -> std::result::Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
     serializer.serialize_str(&value.to_string())
 }
 
-fn serialize_i64_as_string<S>(value: &i64, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_i64_as_string<S>(value: &i64, serializer: S) -> std::result::Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
@@ -138,13 +138,19 @@ impl Order {
             order_type: self.order_type.to_string(),
         };
 
-        serde_json::to_string(&body).context("failed to serialize order query body")
+        serde_json::to_string(&body)
+            .map_err(|e| SerializationError::JsonSerialize {
+                message: e.to_string(),
+            }.into())
     }
 
     pub fn validate_order(&self) -> Result<()> {
         //for buy orders, token quantity should be > 5 and USD amount should be >= 1.0
         if self.side == Side::Buy && (self.maker_amount <= 1 * RAW_UNIT_MULTIPLIER || self.taker_amount < 5 * RAW_UNIT_MULTIPLIER) {
-            anyhow::bail!("Invalid Buy Order: For buy orders, token quantity should be > 5 and USD amount should be >= 1.0");
+            return Err(ValidationError::InvalidParameter {
+                parameter: "order".to_string(),
+                reason: "Invalid Buy Order: For buy orders, token quantity should be > 5 and USD amount should be >= 1.0".to_string(),
+            }.into());
         }
 
         Ok(())
@@ -203,15 +209,30 @@ impl EIP712Struct for Order {
         ]);
 
         let salt_u256 = U256::from_str(salt)
-            .with_context(|| format!("invalid salt: {salt}"))?;
+            .map_err(|e| SerializationError::FieldParse {
+                field: "salt".to_string(),
+                message: format!("invalid salt: {}: {}", salt, e),
+            })?;
         let maker_addr = Address::from_str(&self.maker)
-            .with_context(|| format!("invalid maker address: {}", self.maker))?;
+            .map_err(|e| SerializationError::FieldParse {
+                field: "maker".to_string(),
+                message: format!("invalid maker address: {}: {}", self.maker, e),
+            })?;
         let signer_addr = Address::from_str(&self.signer)
-            .with_context(|| format!("invalid signer address: {}", self.signer))?;
+            .map_err(|e| SerializationError::FieldParse {
+                field: "signer".to_string(),
+                message: format!("invalid signer address: {}: {}", self.signer, e),
+            })?;
         let taker_addr = Address::from_str(&self.taker)
-            .with_context(|| format!("invalid taker address: {}", self.taker))?;
+            .map_err(|e| SerializationError::FieldParse {
+                field: "taker".to_string(),
+                message: format!("invalid taker address: {}: {}", self.taker, e),
+            })?;
         let token_id_u256 = U256::from_str(&self.token_id)
-            .with_context(|| format!("invalid token_id: {}", self.token_id))?;
+            .map_err(|e| SerializationError::FieldParse {
+                field: "token_id".to_string(),
+                message: format!("invalid token_id: {}: {}", self.token_id, e),
+            })?;
 
         // Populate values from object
         Ok(DynSolValue::Tuple(vec![

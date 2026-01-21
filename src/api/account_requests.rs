@@ -2,7 +2,7 @@
 //!
 //! This module provides functions for managing account allowances and API keys on the Polymarket CLOB.
 
-use anyhow::{Context, Result};
+use crate::api::error::Result;
 
 use crate::api::auth::build_l2_headers;
 use crate::api::http_client::get_default_http_client;
@@ -56,7 +56,7 @@ pub async fn get_balance_allowance(
         .headers(l2_headers)
         .send()
         .await
-        .context("HTTP request failed")?;
+        .map_err(|e| crate::api::error::HttpError::from_reqwest(e, callable_url.clone()))?;
 
     handle_api_response(response, &callable_url).await
 }
@@ -95,7 +95,7 @@ pub async fn get_api_key(signer: &Account, signature_type: i32) -> Result<String
         .headers(l2_headers)
         .send()
         .await
-        .context("HTTP request failed")?;
+        .map_err(|e| crate::api::error::HttpError::from_reqwest(e, callable_url.clone()))?;
 
     handle_api_response(response, &callable_url).await
 }

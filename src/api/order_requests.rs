@@ -2,7 +2,7 @@
 //!
 //! This module provides functions for placing and managing orders on the Polymarket CLOB.
 
-use anyhow::{Context, Result};
+use crate::api::error::{Result, ValidationError};
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
 use typed_builder::TypedBuilder;
@@ -135,17 +135,20 @@ impl<'a> LimitOrderRequest<'a> {
         // Validate expiration based on order type
         match self.order_type {
             OrderType::GTD => {
-                anyhow::ensure!(
-                    self.expiration != 0,
-                    "GTD orders require a non-zero expiration timestamp"
-                );
+                if self.expiration == 0 {
+                    return Err(ValidationError::InvalidParameter {
+                        parameter: "expiration".to_string(),
+                        reason: "GTD orders require a non-zero expiration timestamp".to_string(),
+                    }.into());
+                }
             }
             OrderType::FOK | OrderType::FAK | OrderType::GTC => {
-                anyhow::ensure!(
-                    self.expiration == 0,
-                    "{} orders must have expiration set to 0",
-                    self.order_type
-                );
+                if self.expiration != 0 {
+                    return Err(ValidationError::InvalidParameter {
+                        parameter: "expiration".to_string(),
+                        reason: format!("{} orders must have expiration set to 0", self.order_type),
+                    }.into());
+                }
             }
         }
 
@@ -241,7 +244,7 @@ impl<'a> LimitOrderRequest<'a> {
             .body(body)
             .send()
             .await
-            .context(format!("Failed to send POST order request to {}", callable_url))?;
+            .map_err(|e| crate::api::error::HttpError::from_reqwest(e, callable_url.clone()))?;
 
         log::trace!("API Call Raw Response: {:?}", response);
 
@@ -331,7 +334,7 @@ impl<'a> CancelOrderRequest<'a> {
             .body(body)
             .send()
             .await
-            .context("HTTP request failed")?;
+            .map_err(|e| crate::api::error::HttpError::from_reqwest(e, callable_url.clone()))?;
 
         log::trace!("API Call Raw Response: {:?}", response);
 
@@ -382,7 +385,7 @@ async fn fetch_raw_orders(signer: &Account, market_id: &str) -> Result<MarketOrd
         .headers(l2_headers)
         .send()
         .await
-        .context("failed to send request")?;
+        .map_err(|e| crate::api::error::HttpError::from_reqwest(e, callable_url.clone()))?;
 
     handle_orders_response(response, &callable_url).await
 }
@@ -391,17 +394,32 @@ async fn fetch_raw_orders(signer: &Account, market_id: &str) -> Result<MarketOrd
 async fn handle_orders_response(response: reqwest::Response, url: &str) -> Result<MarketOrders> {
     match response.status() {
         reqwest::StatusCode::OK => {
-            let text = response.text().await.context("failed to read response")?;
+            let text = response.text().await
+                .map_err(|e| crate::api::error::HttpError::ReadBody {
+                    url: url.to_string(),
+                    message: e.to_string(),
+                })?;
             log::trace!("API response: {}", text);
-            serde_json::from_str(&text).context("failed to parse market orders")
+            serde_json::from_str(&text)
+                .map_err(|e| crate::api::error::SerializationError::JsonDeserialize {
+                    message: e.to_string(),
+                    raw_response: text.clone(),
+                }.into())
         }
         reqwest::StatusCode::TOO_MANY_REQUESTS => {
             log::error!("Rate Limit reached - pausing for 5 secs");
-            anyhow::bail!("rate limited")
+            Err(crate::api::error::ApiError::RateLimited {
+                retry_after: std::time::Duration::from_secs(5),
+                url: url.to_string(),
+                retry_after_header: None,
+            }.into())
         }
         reqwest::StatusCode::UNAUTHORIZED => {
             log::error!("Authentication failed for request {}", url);
-            anyhow::bail!("unauthorized")
+            Err(crate::api::error::ApiError::Unauthorized {
+                url: url.to_string(),
+                details: None,
+            }.into())
         }
         other => {
             log::error!(
@@ -409,7 +427,12 @@ async fn handle_orders_response(response: reqwest::Response, url: &str) -> Resul
                 other,
                 url
             );
-            anyhow::bail!("HTTP {}", other)
+            Err(crate::api::error::ApiError::UnexpectedStatus {
+                status: other.as_u16(),
+                url: url.to_string(),
+                message: format!("HTTP {}", other),
+                response_body: String::new(),
+            }.into())
         }
     }
 }
@@ -426,7 +449,10 @@ async fn enrich_orders_with_markets(market_orders: MarketOrders) -> Result<Vec<O
         .map(|order| {
             let market = markets
                 .get(&order.market)
-                .with_context(|| format!("market not found for order: {}", order.market))?
+                .ok_or_else(|| crate::api::error::ApiError::NotFound {
+                    url: String::new(),
+                    resource: format!("market with condition_id: {}", order.market),
+                })?
                 .clone();
             parse_market_order(order, market)
         })
@@ -457,15 +483,24 @@ fn parse_market_order(
         original_size: order
             .original_size
             .parse::<f64>()
-            .context("failed to parse original_size")?,
+            .map_err(|e| crate::api::error::SerializationError::FieldParse {
+                field: "original_size".to_string(),
+                message: e.to_string(),
+            })?,
         size_matched: order
             .size_matched
             .parse::<f64>()
-            .context("failed to parse size_matched")?,
+            .map_err(|e| crate::api::error::SerializationError::FieldParse {
+                field: "size_matched".to_string(),
+                message: e.to_string(),
+            })?,
         price: order
             .price
             .parse::<f64>()
-            .context("failed to parse price")?,
+            .map_err(|e| crate::api::error::SerializationError::FieldParse {
+                field: "price".to_string(),
+                message: e.to_string(),
+            })?,
         outcome: order.outcome,
         expiration: order.expiration,
         order_type: order.order_type,
