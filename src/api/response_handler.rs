@@ -66,7 +66,7 @@ pub async fn handle_api_response(response: Response, url: &str) -> Result<String
                     message: e.to_string(),
                 }
             })?;
-            log::info!("API response: {}", text);
+            log::trace!("API response: {}", text);
             Ok(text)
         }
         StatusCode::BAD_REQUEST => {
