@@ -41,7 +41,7 @@ pub struct PolyResponseEvent {
     pub show_all_outcomes: bool,
     pub show_market_images: bool,
     pub enable_neg_risk: bool,
-    pub automatically_active: bool,
+    pub automatically_active: Option<bool>,
     pub series_slug: String,
     pub neg_risk_augmented: bool,
     pub pending_deployment: bool,
