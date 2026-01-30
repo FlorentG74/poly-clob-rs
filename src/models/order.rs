@@ -1,6 +1,6 @@
 use crate::api::auth::{build_l1_signature, EIP712Struct};
 use crate::models::{OrderType, Side};
-use crate::api::error::{Result, SerializationError, ValidationError};
+use crate::api::error::{Result, SerializationError};
 use serde::Serialize;
 use typed_builder::TypedBuilder;
 
@@ -147,10 +147,11 @@ impl Order {
     pub fn validate_order(&self) -> Result<()> {
         //for buy orders, token quantity should be > 5 and USD amount should be >= 1.0
         if self.side == Side::Buy && (self.maker_amount <= 1 * RAW_UNIT_MULTIPLIER || self.taker_amount < 5 * RAW_UNIT_MULTIPLIER) {
-            return Err(ValidationError::InvalidParameter {
-                parameter: "order".to_string(),
-                reason: "Invalid Buy Order: For buy orders, token quantity should be > 5 and USD amount should be >= 1.0".to_string(),
-            }.into());
+            log::warn!(
+                "Buy order validation warning: Token quantity should be > 5 and USD amount should be >= 1.0. Current: maker_amount={}, taker_amount={}",
+                self.maker_amount as f64 / RAW_UNIT_MULTIPLIER as f64,
+                self.taker_amount as f64 / RAW_UNIT_MULTIPLIER as f64
+            );
         }
 
         Ok(())
