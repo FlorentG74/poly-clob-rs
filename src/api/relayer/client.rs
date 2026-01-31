@@ -23,7 +23,7 @@ use std::time::Duration;
 use typed_builder::TypedBuilder;
 
 /// Default chain ID for Polygon mainnet.
-pub const POLYGON_CHAIN_ID: u64 = 137;
+use crate::constants::POLYGON_CHAIN_ID;
 
 /// Default polling interval for transaction state checks.
 pub const DEFAULT_POLL_INTERVAL_MS: u64 = 2000;

@@ -73,7 +73,8 @@ pub mod types;
 
 // Re-export commonly used items
 pub use auth::BuilderCredentials;
-pub use client::{RelayerClient, POLYGON_CHAIN_ID};
+pub use client::RelayerClient;
+pub use crate::constants::POLYGON_CHAIN_ID;
 pub use endpoints::RELAYER_API;
 pub use transactions::{contracts, create_redeem_tx, create_redeem_all_tx, RedeemParams};
 pub use types::{

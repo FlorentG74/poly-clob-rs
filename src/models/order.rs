@@ -13,9 +13,9 @@ use std::str::FromStr;
 
 const NAME: &str = "Polymarket CTF Exchange";
 const VERSION: &str = "1";
-const CHAIN_ID: i32 = 137;
+use crate::constants::{POLYGON_CHAIN_ID, RAW_UNIT_MULTIPLIER};
 
-const RAW_UNIT_MULTIPLIER: i32 = 1_000_000;
+const CHAIN_ID: i32 = POLYGON_CHAIN_ID as i32;
 
 // Non-Neg Risk markets
 const NON_NEG_RISK_VERIFYING_CONTRACT: Address =
@@ -146,7 +146,7 @@ impl Order {
 
     pub fn validate_order(&self) -> Result<()> {
         //for buy orders, token quantity should be > 5 and USD amount should be >= 1.0
-        if self.side == Side::Buy && (self.maker_amount <= 1 * RAW_UNIT_MULTIPLIER || self.taker_amount < 5 * RAW_UNIT_MULTIPLIER) {
+        if self.side == Side::Buy && (self.maker_amount <= 1 * (RAW_UNIT_MULTIPLIER as i32) || self.taker_amount < 5 * (RAW_UNIT_MULTIPLIER as i32)) {
             log::warn!(
                 "Buy order validation warning: Token quantity should be > 5 and USD amount should be >= 1.0. Current: maker_amount={}, taker_amount={}",
                 self.maker_amount as f64 / RAW_UNIT_MULTIPLIER as f64,

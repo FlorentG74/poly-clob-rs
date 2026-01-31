@@ -16,8 +16,7 @@ use reqwest::header::*;
 
 use super::clob_endpoints::{CLOB_API, CANCEL, POST_ORDER};
 
-/// Multiplier to convert decimal amounts to raw units (10^6) for the Polymarket API
-const RAW_UNIT_MULTIPLIER: i64 = 1_000_000;
+use crate::constants::raw_multiplier_decimal;
 
 /// Parameters for placing a limit order on the Polymarket CLOB.
 ///
@@ -165,7 +164,7 @@ impl<'a> LimitOrderRequest<'a> {
         // Using Decimal ensures exact arithmetic with no floating-point rounding errors.
         // Note: size parameter represents token quantity (number of shares) for both BUY and SELL
 
-        let raw_multiplier = Decimal::from(RAW_UNIT_MULTIPLIER);
+        let raw_multiplier = raw_multiplier_decimal();
 
         // Polymarket API precision requirements:
         // - Token amounts (size): max 2 decimals
@@ -487,7 +486,7 @@ mod tests {
         let size = Decimal::from_f64(8.82_f64).unwrap();
         let price = Decimal::from_f64(0.45_f64).unwrap();
 
-        let raw_multiplier = Decimal::from(RAW_UNIT_MULTIPLIER);
+        let raw_multiplier = raw_multiplier_decimal();
         let expected_maker_amount = 3_969_000i32; // 8.82 * 0.45 * 1_000_000 = 3_969_000
 
         let calculated_maker = (size * price * raw_multiplier)
@@ -505,7 +504,7 @@ mod tests {
         // Test: size=8.82 should produce taker_amount=8820000
         let size = Decimal::from_f64(8.82_f64).unwrap();
 
-        let raw_multiplier = Decimal::from(RAW_UNIT_MULTIPLIER);
+        let raw_multiplier = raw_multiplier_decimal();
         let expected_taker_amount = 8_820_000i32; // 8.82 * 1_000_000 = 8_820_000
 
         let calculated_taker = (size * raw_multiplier)
@@ -524,7 +523,7 @@ mod tests {
         let size = Decimal::from_f64(8.82_f64).unwrap();
         let price = Decimal::from_f64(0.45_f64).unwrap();
 
-        let raw_multiplier = Decimal::from(RAW_UNIT_MULTIPLIER);
+        let raw_multiplier = raw_multiplier_decimal();
         let expected_maker_amount = 8_820_000i32; // tokens: 8.82 * 1_000_000
         let expected_taker_amount = 3_969_000i32; // USDC: 8.82 * 0.45 * 1_000_000
 
@@ -547,7 +546,7 @@ mod tests {
         let problematic_price = Decimal::from_f64(0.33_f64).unwrap(); // 1/3 repeating
         let size = Decimal::from_f64(100_f64).unwrap();
 
-        let raw_multiplier = Decimal::from(RAW_UNIT_MULTIPLIER);
+        let raw_multiplier = raw_multiplier_decimal();
         let result = (size * problematic_price * raw_multiplier)
             .round()
             .to_i32()
