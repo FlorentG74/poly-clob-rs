@@ -117,20 +117,19 @@ pub struct LimitOrderRequest<'a> {
 }
 
 impl<'a> LimitOrderRequest<'a> {
-    /// Executes the limit order request.
+    /// Builds and validates the Order without executing it.
     ///
     /// # Returns
     ///
-    /// Returns `Ok(String)` with the API response on success, or an error on failure.
+    /// Returns `Ok(Order)` if the order is valid, or an error if validation fails.
     ///
     /// # Errors
     ///
     /// Returns an error if:
     /// * Expiration is non-zero for FOK/FAK/GTC orders
     /// * Expiration is zero for GTD orders
-    /// * The HTTP request fails
-    /// * The API returns an error response
-    pub async fn execute(&self) -> Result<String> {
+    /// * Order size validation fails (BUY orders: USD amount must be > $1.0 AND token quantity must be >= 5)
+    pub async fn build(&self) -> Result<Order> {
         // Validate expiration based on order type
         match self.order_type {
             OrderType::GTD => {
@@ -150,19 +149,6 @@ impl<'a> LimitOrderRequest<'a> {
                 }
             }
         }
-
-        let method = "POST";
-        let request_path = POST_ORDER;
-
-        let callable_url = format!("{}{}", CLOB_API, request_path);
-
-        let client = get_http_client(Some(request_path));
-
-        // Polymarket API amounts are in raw units (10^6):
-        // - For BUY orders: maker_amount is USDC (price denominated), taker_amount is tokens
-        // - For SELL orders: maker_amount is tokens, taker_amount is USDC (price denominated)
-        // Using Decimal ensures exact arithmetic with no floating-point rounding errors.
-        // Note: size parameter represents token quantity (number of shares) for both BUY and SELL
 
         let raw_multiplier = raw_multiplier_decimal();
 
@@ -218,6 +204,37 @@ impl<'a> LimitOrderRequest<'a> {
             .order_type(self.order_type)
             .build();
 
+        // Validate order before returning
+        order.validate_order()?;
+
+        Ok(order)
+    }
+
+    /// Executes the limit order request.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(String)` with the API response on success, or an error on failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// * Expiration is non-zero for FOK/FAK/GTC orders
+    /// * Expiration is zero for GTD orders
+    /// * Order size validation fails
+    /// * The HTTP request fails
+    /// * The API returns an error response
+    pub async fn execute(&self) -> Result<String> {
+        // Build and validate order
+        let order = self.build().await?;
+
+        let method = "POST";
+        let request_path = POST_ORDER;
+
+        let callable_url = format!("{}{}", CLOB_API, request_path);
+
+        let client = get_http_client(Some(request_path));
+
         let salt = get_timestamp();
         let nonce = 0; // Nonce for order signing
         let body = order.build_order_query_body(
@@ -230,9 +247,6 @@ impl<'a> LimitOrderRequest<'a> {
         let l2_headers = build_l2_headers(self.signer, method, request_path, &body, &salt)?;
 
         log::debug!("Signed Order body: {}", &body);
-
-        // Validate order prior to sending
-        order.validate_order()?;
 
         // Send the order placement request
         let response = client
