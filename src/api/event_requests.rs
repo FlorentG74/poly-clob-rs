@@ -5,6 +5,7 @@ use typed_builder::TypedBuilder;
 use crate::api::http_client::get_http_client;
 use super::{WebserviceRequest, GAMMA_API, GET_EVENTS, GET_EVENT_SERIES};
 use crate::models::event::PolyResponseEvent;
+use crate::models::event_series::PolyResponseEventSeries;
 
 impl WebserviceRequest {
     pub fn new_event_by_id_request(id: &str) -> Self {
@@ -61,6 +62,44 @@ impl<'a> EventBySlugRequest<'a> {
             crate::ApiError::NotFound {
                 url: callable_url,
                 resource: format!("event with slug: {}", self.slug),
+            }
+            .into()
+        })
+    }
+}
+
+/// Request builder for fetching an event series by slug.
+///
+/// Returns the series with its list of events, useful for finding
+/// the current/upcoming event in a recurring series.
+#[derive(TypedBuilder)]
+pub struct EventSeriesRequest<'a> {
+    #[builder(setter(into))]
+    pub slug: &'a str,
+}
+
+impl<'a> EventSeriesRequest<'a> {
+    pub async fn execute(&self) -> Result<PolyResponseEventSeries> {
+        let client = get_http_client(None);
+
+        let web_service_request = WebserviceRequest {
+            api: GAMMA_API.to_string(),
+            url: GET_EVENT_SERIES.to_string(),
+            method: Method::GET,
+            with_pagination: false,
+            args: vec![("slug".to_string(), self.slug.to_string())],
+            body: None,
+        };
+
+        let callable_url = web_service_request.get_callable_url(0);
+        let series =
+            WebserviceRequest::fetch_one::<Vec<PolyResponseEventSeries>>(&client, &web_service_request)
+                .await?;
+
+        series.into_iter().next().ok_or_else(|| {
+            crate::ApiError::NotFound {
+                url: callable_url,
+                resource: format!("event series with slug: {}", self.slug),
             }
             .into()
         })

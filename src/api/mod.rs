@@ -10,6 +10,7 @@
 //!
 //! - [`auth`] - Authentication helpers for L1 and L2 auth
 //! - [`clob_endpoints`] - API endpoint URL constants
+//! - [`crypto_price_requests`] - Crypto opening/closing price request builders (strike/settlement)
 //! - [`webservice_request`] - Core request builder type
 //! - [`event_requests`] - Event and event series request builders
 //! - [`market_requests`] - Market data request builders
@@ -40,6 +41,7 @@
 pub mod auth;
 pub mod activity_requests;
 pub mod clob_endpoints;
+pub mod crypto_price_requests;
 pub mod error;
 pub mod event_requests;
 pub mod fee_requests;
@@ -78,6 +80,7 @@ impl SortDirection {
 pub use auth::*;
 pub use activity_requests::*;
 pub use clob_endpoints::*;
+pub use crypto_price_requests::*;
 pub use fee_requests::*;
 pub use market_requests::*;
 pub use order_requests::*;

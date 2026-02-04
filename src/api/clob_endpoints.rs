@@ -47,3 +47,7 @@ pub static POSITIONS: &str = "/positions";
 pub static ACTIVITY: &str = "/activity";
 pub static GET_EVENT_SERIES: &str = "/series";
 pub static GET_EVENTS: &str = "/events";
+
+// Polymarket Website API (for crypto strike/settlement prices)
+pub static POLYMARKET_API: &str = "https://polymarket.com/api";
+pub static GET_CRYPTO_PRICE: &str = "/crypto/crypto-price";
