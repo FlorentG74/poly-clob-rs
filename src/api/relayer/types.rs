@@ -140,19 +140,24 @@ pub enum RelayerTxType {
 
 /// Transaction state in the relayer pipeline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum RelayerTransactionState {
     /// Transaction is newly submitted.
+    #[serde(alias = "NEW", alias = "STATE_NEW")]
     New,
     /// Transaction has been executed by the relayer.
+    #[serde(alias = "EXECUTED", alias = "STATE_EXECUTED")]
     Executed,
     /// Transaction has been mined on-chain.
+    #[serde(alias = "MINED", alias = "STATE_MINED")]
     Mined,
     /// Transaction is invalid.
+    #[serde(alias = "INVALID", alias = "STATE_INVALID")]
     Invalid,
     /// Transaction has been confirmed with sufficient block confirmations.
+    #[serde(alias = "CONFIRMED", alias = "STATE_CONFIRMED")]
     Confirmed,
     /// Transaction failed.
+    #[serde(alias = "FAILED", alias = "STATE_FAILED")]
     Failed,
 }
 
@@ -266,6 +271,8 @@ pub struct TransactionSubmitRequest {
 pub struct SignatureParamsRequest {
     /// Gas price in wei.
     pub gas_price: String,
+    /// Operation type ("0" = Call, "1" = DelegateCall).
+    pub operation: String,
     /// Safe transaction gas.
     pub safe_txn_gas: String,
     /// Base gas cost.
@@ -297,57 +304,68 @@ pub struct ProxyTransactionArgs {
 
 /// Response from the relayer after submitting a transaction.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct RelayerTransactionResponse {
     /// Unique transaction ID assigned by the relayer.
+    #[serde(alias = "transactionID", alias = "transactionId", alias = "transaction_id")]
     pub transaction_id: String,
     /// Current state of the transaction.
     pub state: RelayerTransactionState,
     /// Transaction hash (if mined).
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(alias = "transactionHash")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub hash: Option<String>,
 }
 
 /// Full transaction details from the relayer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct RelayerTransaction {
     /// Unique transaction ID.
+    #[serde(alias = "transactionID", alias = "transactionId", alias = "transaction_id")]
     pub transaction_id: String,
     /// Transaction hash (if mined).
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(alias = "transactionHash")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub hash: Option<String>,
     /// Sender address.
+    #[serde(default = "default_address")]
     pub sender: Address,
     /// Recipient/target address.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub recipient: Option<Address>,
     /// Proxy/Safe address.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(alias = "proxyAddress")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub proxy_address: Option<Address>,
     /// Encoded transaction data.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub data: Option<Bytes>,
     /// Transaction nonce.
+    #[serde(default, deserialize_with = "deserialize_string_to_u64")]
     pub nonce: u64,
     /// ETH value.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub value: Option<U256>,
     /// Current transaction state.
     pub state: RelayerTransactionState,
     /// Transaction type (SAFE or SAFE-CREATE).
     #[serde(rename = "type")]
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub tx_type: Option<String>,
     /// Additional metadata.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub metadata: Option<serde_json::Value>,
     /// Creation timestamp.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(alias = "createdAt")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub created_at: Option<String>,
     /// Last update timestamp.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(alias = "updatedAt")]
+    #[serde(skip_serializing_if = "Option::is_none", default)]
     pub updated_at: Option<String>,
+}
+
+fn default_address() -> Address {
+    Address::ZERO
 }
 
 /// Nonce response from the relayer.
@@ -398,6 +416,16 @@ where
 pub struct DeployedResponse {
     /// Whether the Safe/Proxy is deployed.
     pub deployed: bool,
+}
+
+/// Relay payload response from the relayer (for proxy transactions).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RelayPayloadResponse {
+    /// Relay address.
+    pub address: String,
+    /// Transaction nonce.
+    #[serde(deserialize_with = "deserialize_string_to_u64")]
+    pub nonce: u64,
 }
 
 #[cfg(test)]

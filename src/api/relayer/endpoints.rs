@@ -23,3 +23,7 @@ pub static SUBMIT_TRANSACTION: &str = "/submit";
 /// Check if a Safe/Proxy is deployed.
 /// Query params: `address`
 pub static GET_DEPLOYED: &str = "/deployed";
+
+/// Get relay payload for proxy transactions.
+/// Query params: `address`, `type`
+pub static GET_RELAY_PAYLOAD: &str = "/relay-payload";

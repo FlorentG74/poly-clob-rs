@@ -2,22 +2,28 @@
 //!
 //! This module provides the `RelayerClient` struct for interacting with the
 //! Polymarket Relayer V2 API. The relayer enables gasless transactions by
-//! submitting transactions on behalf of users through Safe or Proxy wallets.
+//! submitting transactions on behalf of users through Safe wallets.
 
-use super::auth::{build_builder_headers, BuilderCredentials, sign_transaction_eip712};
-use super::endpoints::{
-    GET_DEPLOYED, GET_NONCE, GET_TRANSACTION, GET_TRANSACTIONS, RELAYER_API, SUBMIT_TRANSACTION,
+use super::auth::{
+    build_builder_headers, derive_proxy_address, derive_safe_address, sign_proxy_transaction,
+    sign_safe_transaction, BuilderCredentials,
 };
+use super::endpoints::{
+    GET_DEPLOYED, GET_NONCE, GET_RELAY_PAYLOAD, GET_TRANSACTION, GET_TRANSACTIONS, RELAYER_API,
+    SUBMIT_TRANSACTION,
+};
+use super::transactions::{contracts, encode_proxy_call_data};
 use super::types::{
-    DeployedResponse, NonceResponse, ProxyTransaction, ProxyTransactionArgs, RelayerTransaction,
+    DeployedResponse, NonceResponse, RelayPayloadResponse, RelayerTransaction,
     RelayerTransactionResponse, RelayerTransactionState, RelayerTxType, SafeTransaction,
-    SignatureType, Transaction, TransactionSubmitRequest, SignatureParamsRequest,
+    SignatureType, Transaction,
 };
 use crate::api::error::{
     ApiError, AuthError, HttpError, RelayerError, Result, SerializationError, ValidationError,
 };
 use crate::api::http_client::get_http_client;
 use alloy::primitives::Address;
+use alloy::signers::local::PrivateKeySigner;
 use hex;
 use std::time::Duration;
 use typed_builder::TypedBuilder;
@@ -35,7 +41,7 @@ pub const DEFAULT_MAX_POLL_ATTEMPTS: u32 = 30;
 ///
 /// The relayer client provides methods for:
 /// - Querying nonces and deployment status
-/// - Submitting Safe or Proxy transactions
+/// - Submitting Safe transactions with proper EIP-712 signing
 /// - Polling for transaction confirmations
 ///
 /// # Example
@@ -45,13 +51,17 @@ pub const DEFAULT_MAX_POLL_ATTEMPTS: u32 = 30;
 ///     RelayerClient, BuilderCredentials, RelayerTxType,
 ///     create_redeem_tx, RedeemParams,
 /// };
+/// use alloy::signers::local::PrivateKeySigner;
+/// use std::str::FromStr;
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///     let creds = BuilderCredentials::from_env()?;
+///     let signer = PrivateKeySigner::from_str("0x...")?;
 ///     let client = RelayerClient::builder()
 ///         .credentials(creds)
 ///         .signer_address("0x...".to_string())
+///         .signer(signer)
 ///         .build();
 ///
 ///     // Get current nonce
@@ -75,8 +85,11 @@ pub struct RelayerClient {
     /// Builder API credentials for authentication.
     pub credentials: BuilderCredentials,
 
-    /// Signer address (Safe owner or Proxy owner).
+    /// Signer address (EOA / Safe owner).
     pub signer_address: String,
+
+    /// Private key signer for EIP-712 Safe transaction signing.
+    pub signer: PrivateKeySigner,
 
     /// Base URL for the relayer API.
     #[builder(default = RELAYER_API.to_string())]
@@ -211,7 +224,7 @@ impl RelayerClient {
     /// Get a specific transaction by ID.
     pub async fn get_transaction(&self, transaction_id: &str) -> Result<RelayerTransaction> {
         let url = format!(
-            "{}{}?transactionId={}",
+            "{}{}?id={}",
             self.base_url, GET_TRANSACTION, transaction_id
         );
 
@@ -226,27 +239,38 @@ impl RelayerClient {
             .map_err(|e| HttpError::from_reqwest(e, &url))?;
 
         let status = response.status();
+        let body = response
+            .text()
+            .await
+            .map_err(|e| HttpError::ReadBody {
+                url: url.clone(),
+                message: e.to_string(),
+            })?;
+
         if !status.is_success() {
-            let body = response
-                .text()
-                .await
-                .map_err(|e| HttpError::ReadBody {
-                    url: url.clone(),
-                    message: e.to_string(),
-                })?;
             return Err(ApiError::UnexpectedStatus {
                 status: status.as_u16(),
                 url,
-                message: "get_transaction failed".to_string(),
+                message: format!("get_transaction failed: {}", body),
                 response_body: body,
             }
             .into());
         }
 
-        response.json().await.map_err(|e| {
+        log::debug!("get_transaction response: {}", body);
+
+        // The relayer returns an array of transactions; take the first match
+        let txns: Vec<RelayerTransaction> = serde_json::from_str(&body).map_err(|e| {
             SerializationError::JsonDeserialize {
-                message: e.to_string(),
-                raw_response: String::new(),
+                message: format!("{} (raw: {})", e, &body[..body.len().min(200)]),
+                raw_response: body.clone(),
+            }
+        })?;
+
+        txns.into_iter().next().ok_or_else(|| {
+            RelayerError::TransactionFailed {
+                state: "NOT_FOUND".to_string(),
+                message: Some(format!("transaction {} not found", transaction_id)),
             }
             .into()
         })
@@ -293,10 +317,61 @@ impl RelayerClient {
         })
     }
 
+    /// Get relay payload for proxy transactions.
+    ///
+    /// Returns the relay address and nonce needed for proxy transaction signing.
+    pub async fn get_relay_payload(&self, address: &str) -> Result<RelayPayloadResponse> {
+        let tx_type_str = match self.tx_type {
+            RelayerTxType::Safe => "SAFE",
+            RelayerTxType::Proxy => "PROXY",
+        };
+
+        let url = format!(
+            "{}{}?address={}&type={}",
+            self.base_url, GET_RELAY_PAYLOAD, address, tx_type_str
+        );
+
+        let headers = build_builder_headers(&self.credentials, "GET", GET_RELAY_PAYLOAD, "")?;
+
+        let client = get_http_client(Some(&url));
+        let response = client
+            .get(&url)
+            .headers(headers)
+            .send()
+            .await
+            .map_err(|e| HttpError::from_reqwest(e, &url))?;
+
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .map_err(|e| HttpError::ReadBody {
+                url: url.clone(),
+                message: e.to_string(),
+            })?;
+
+        if !status.is_success() {
+            return Err(ApiError::UnexpectedStatus {
+                status: status.as_u16(),
+                url,
+                message: "get_relay_payload failed".to_string(),
+                response_body: body,
+            }
+            .into());
+        }
+
+        serde_json::from_str(&body).map_err(|e| {
+            SerializationError::JsonDeserialize {
+                message: e.to_string(),
+                raw_response: body.clone(),
+            }
+            .into()
+        })
+    }
+
     /// Submit transactions to the relayer.
     ///
-    /// This method automatically routes to either Safe or Proxy submission
-    /// based on the client's `tx_type` configuration.
+    /// Routes to Safe or Proxy submission based on `tx_type`.
     pub async fn submit(&self, transactions: Vec<Transaction>) -> Result<RelayerTransactionResponse> {
         match self.tx_type {
             RelayerTxType::Safe => {
@@ -305,24 +380,19 @@ impl RelayerClient {
                 self.submit_safe(safe_txs).await
             }
             RelayerTxType::Proxy => {
-                if transactions.len() != 1 {
-                    return Err(ValidationError::InvalidParameter {
-                        parameter: "transactions".to_string(),
-                        reason: "Proxy transactions only support a single transaction at a time"
-                            .to_string(),
-                    }
-                    .into());
-                }
-                let proxy_tx: ProxyTransaction = transactions.into_iter().next().unwrap().into();
-                self.submit_proxy(proxy_tx).await
+                self.submit_proxy(transactions).await
             }
         }
     }
 
-    /// Submit Safe transactions to the relayer.
+    /// Submit a Safe transaction to the relayer.
     ///
-    /// Safe transactions can be batched - multiple transactions will be executed
-    /// atomically in a single on-chain transaction.
+    /// Implements the official Polymarket relayer format matching the TypeScript
+    /// `builder-relayer-client`:
+    /// 1. Get nonce from relayer
+    /// 2. Determine Safe address (from wallet_address config, or derive via CREATE2)
+    /// 3. Sign with EIP-712 SafeTx schema
+    /// 4. Submit with proper request format including signatureParams
     pub async fn submit_safe(
         &self,
         transactions: Vec<SafeTransaction>,
@@ -335,191 +405,321 @@ impl RelayerClient {
             .into());
         }
 
-        let nonce = self.get_nonce().await?;
+        // Use the signer's derived address as the authoritative EOA
+        // (matches TypeScript's `signer.getAddress()`)
+        let eoa = self.signer.address();
+        let eoa_str = format!("{}", eoa);
 
-        let sender: Address = self.signer_address.parse().map_err(|_| {
-            AuthError::InvalidAddress {
-                address: self.signer_address.clone(),
-            }
-        })?;
-
-        // For now, we can only submit single transactions via this format
-        // TODO: Implement EIP-712 signing to properly batch transactions
-        if transactions.len() > 1 {
-            log::warn!("Polymarket relayer currently supports single transactions; batching {} transactions as separate requests", transactions.len());
-        }
-
-        // Submit each transaction individually
-        for tx in transactions {
-            // For POLY_PROXY wallets, signature is optional (auth is via Builder API credentials)
-            // For other wallet types, we would need to sign with EIP-712
-            let signature = if self.signature_type == SignatureType::PolyProxy {
-                None
-            } else {
-                // For EOA and GnosisSafe, include EIP-712 signature
-                let sig = sign_transaction_eip712(sender, tx.to, sender, &tx.data, nonce)?;
-                Some(sig)
-            };
-
-            // For POLY_PROXY, use format with explicit proxyWallet
-            let req = if self.signature_type == SignatureType::PolyProxy {
-                // For POLY_PROXY, both from and proxyWallet should be the same (poly_address)
-                serde_json::json!({
-                    "from": sender.to_string(),
-                    "to": tx.to.to_string(),
-                    "proxyWallet": sender.to_string(),
-                    "data": format!("0x{}", hex::encode(tx.data.as_ref())),
-                    "type": "SAFE"
-                })
-            } else {
-                // Full format for other wallet types
-                serde_json::to_value(&TransactionSubmitRequest {
-                    from: sender,
-                    to: tx.to,
-                    proxy_wallet: sender,
-                    data: tx.data,
-                    nonce,
-                    signature,
-                    tx_type: "SAFE".to_string(),
-                    signature_params: SignatureParamsRequest {
-                        gas_price: "0".to_string(),
-                        safe_txn_gas: "0".to_string(),
-                        base_gas: "0".to_string(),
-                        gas_token: Address::ZERO,
-                        refund_receiver: Address::ZERO,
-                    },
-                    metadata: None,
-                })
-                .map_err(|e| SerializationError::JsonSerialize {
-                    message: e.to_string(),
-                })?
-            };
-
-            let body = serde_json::to_string(&req).map_err(|e| SerializationError::JsonSerialize {
-                message: e.to_string(),
+        // Determine the Safe/proxy wallet address:
+        // 1. If wallet_address is configured (POLY_ADDRESS), use it directly
+        // 2. Otherwise, derive via CREATE2 (matches TypeScript deriveSafe)
+        let safe_address: Address = if let Some(ref wallet_addr) = self.wallet_address {
+            let addr: Address = wallet_addr.parse().map_err(|_| {
+                AuthError::InvalidAddress {
+                    address: wallet_addr.clone(),
+                }
             })?;
-            log::debug!(
-                "Submitting request:\n{}",
-                serde_json::to_string_pretty(&req).unwrap_or_default()
-            );
-
-            let url = format!("{}{}", self.base_url, SUBMIT_TRANSACTION);
-            let headers =
-                build_builder_headers(&self.credentials, "POST", SUBMIT_TRANSACTION, &body)?;
-
-            let client = get_http_client(Some(&url));
-            let response = client
-                .post(&url)
-                .headers(headers)
-                .header("Content-Type", "application/json")
-                .body(body.clone())
-                .send()
-                .await
-                .map_err(|e| HttpError::from_reqwest(e, &url))?;
-
-            let status = response.status();
-            let body_text = response
-                .text()
-                .await
-                .map_err(|e| HttpError::ReadBody {
-                    url: url.clone(),
-                    message: e.to_string(),
-                })?;
-
-            if !status.is_success() {
-                log::error!("Submit Safe failed with status {}: {}", status, body_text);
-                return Err(ApiError::UnexpectedStatus {
-                    status: status.as_u16(),
-                    url,
-                    message: "submit_safe failed".to_string(),
-                    response_body: body_text,
-                }
-                .into());
+            let derived = derive_safe_address(&eoa);
+            if addr != derived {
+                log::info!(
+                    "Using configured wallet address {} (derived would be {})",
+                    addr, derived
+                );
             }
-
-            // Return the first successful response (TODO: collect all responses if batching)
-            return serde_json::from_str(&body_text).map_err(|e| {
-                SerializationError::JsonDeserialize {
-                    message: e.to_string(),
-                    raw_response: body_text.clone(),
-                }
-                .into()
-            });
-        }
-
-        Err(ValidationError::InvalidParameter {
-            parameter: "transactions".to_string(),
-            reason: "no transactions to submit".to_string(),
-        }
-        .into())
-    }
-
-    /// Submit a Proxy transaction to the relayer.
-    ///
-    /// Proxy transactions can only submit one transaction at a time.
-    pub async fn submit_proxy(
-        &self,
-        transaction: ProxyTransaction,
-    ) -> Result<RelayerTransactionResponse> {
-        let nonce = self.get_nonce().await?;
-
-        let sender: Address = self.signer_address.parse().map_err(|_| {
-            AuthError::InvalidAddress {
-                address: self.signer_address.clone(),
-            }
-        })?;
-
-        // For proxy, we need to encode the transaction data differently
-        let args = ProxyTransactionArgs {
-            sender,
-            nonce,
-            gas_price: alloy::primitives::U256::ZERO, // Let relayer estimate
-            gas_limit: None,
-            data: transaction.data,
-            relayer: Address::ZERO, // Let relayer fill in
+            addr
+        } else {
+            let derived = derive_safe_address(&eoa);
+            log::info!("No wallet_address configured, using derived Safe: {}", derived);
+            derived
         };
 
-        let body = serde_json::to_string(&args).map_err(|e| SerializationError::JsonSerialize {
+        log::info!("EOA: {}, Safe/Proxy wallet: {}", eoa, safe_address);
+
+        // Get nonce (query with the EOA address, matching TypeScript's getNonce(signerAddress))
+        let nonce = self.get_nonce_for_address(&eoa_str).await?;
+
+        // Use the first transaction (single tx support)
+        if transactions.len() > 1 {
+            log::warn!(
+                "Multiple transactions ({}) not yet supported for Safe submission; using first only",
+                transactions.len()
+            );
+        }
+        let tx = &transactions[0];
+
+        // Sign the transaction
+        let signature = sign_safe_transaction(
+            &self.signer,
+            &safe_address,
+            self.chain_id,
+            &tx.to,
+            &tx.data,
+            tx.operation as u8,
+            nonce,
+        )
+        .await?;
+
+        // Build request body matching the official TypeScript format
+        let req = serde_json::json!({
+            "type": "SAFE",
+            "from": eoa_str,
+            "to": format!("{}", tx.to),
+            "proxyWallet": format!("{}", safe_address),
+            "data": format!("0x{}", hex::encode(tx.data.as_ref())),
+            "nonce": nonce.to_string(),
+            "signature": signature,
+            "signatureParams": {
+                "gasPrice": "0",
+                "operation": "0",
+                "safeTxnGas": "0",
+                "baseGas": "0",
+                "gasToken": format!("{}", Address::ZERO),
+                "refundReceiver": format!("{}", Address::ZERO)
+            },
+            "metadata": ""
+        });
+
+        let body = serde_json::to_string(&req).map_err(|e| SerializationError::JsonSerialize {
             message: e.to_string(),
         })?;
-        let url = format!("{}{}", self.base_url, SUBMIT_TRANSACTION);
+        log::info!(
+            "Submitting Safe request:\n{}",
+            serde_json::to_string_pretty(&req).unwrap_or_default()
+        );
 
-        let headers = build_builder_headers(&self.credentials, "POST", SUBMIT_TRANSACTION, &body)?;
+        let url = format!("{}{}", self.base_url, SUBMIT_TRANSACTION);
+        let headers =
+            build_builder_headers(&self.credentials, "POST", SUBMIT_TRANSACTION, &body)?;
 
         let client = get_http_client(Some(&url));
         let response = client
             .post(&url)
             .headers(headers)
             .header("Content-Type", "application/json")
-            .body(body)
+            .body(body.clone())
             .send()
             .await
             .map_err(|e| HttpError::from_reqwest(e, &url))?;
 
         let status = response.status();
+        let body_text = response
+            .text()
+            .await
+            .map_err(|e| HttpError::ReadBody {
+                url: url.clone(),
+                message: e.to_string(),
+            })?;
+
         if !status.is_success() {
-            let body = response
-                .text()
-                .await
-                .map_err(|e| HttpError::ReadBody {
-                    url: url.clone(),
-                    message: e.to_string(),
-                })?;
+            log::error!("Submit Safe failed with status {}: {}", status, body_text);
             return Err(ApiError::UnexpectedStatus {
                 status: status.as_u16(),
                 url,
-                message: "submit_proxy failed".to_string(),
-                response_body: body,
+                message: format!("submit_safe failed: {}", body_text),
+                response_body: body_text,
             }
             .into());
         }
 
-        response.json().await.map_err(|e| {
+        log::info!("Submit Safe response: {}", body_text);
+        Self::parse_submit_response(&body_text)
+    }
+
+    /// Submit a Proxy transaction to the relayer.
+    ///
+    /// Implements the Polymarket Proxy relayer format matching the TypeScript
+    /// `builder-relayer-client`:
+    /// 1. Get relay payload (relay address + nonce) from relayer
+    /// 2. Encode transactions as proxy factory call
+    /// 3. Sign with proxy struct hash
+    /// 4. Submit with proper request format
+    pub async fn submit_proxy(
+        &self,
+        transactions: Vec<Transaction>,
+    ) -> Result<RelayerTransactionResponse> {
+        if transactions.is_empty() {
+            return Err(ValidationError::InvalidParameter {
+                parameter: "transactions".to_string(),
+                reason: "cannot submit empty transaction list".to_string(),
+            }
+            .into());
+        }
+
+        let eoa = self.signer.address();
+        let eoa_str = format!("{}", eoa);
+
+        // Determine the proxy wallet address
+        let proxy_address: Address = if let Some(ref wallet_addr) = self.wallet_address {
+            let addr: Address = wallet_addr.parse().map_err(|_| {
+                AuthError::InvalidAddress {
+                    address: wallet_addr.clone(),
+                }
+            })?;
+            let derived = derive_proxy_address(&eoa);
+            if addr != derived {
+                log::info!(
+                    "Using configured wallet address {} (derived proxy would be {})",
+                    addr, derived
+                );
+            }
+            addr
+        } else {
+            let derived = derive_proxy_address(&eoa);
+            log::info!("No wallet_address configured, using derived proxy: {}", derived);
+            derived
+        };
+
+        log::info!("EOA: {}, Proxy wallet: {}", eoa, proxy_address);
+
+        // Get relay payload (relay address + nonce)
+        let relay_payload = self.get_relay_payload(&eoa_str).await?;
+        let relay_address: Address = relay_payload.address.parse().map_err(|_| {
+            AuthError::InvalidAddress {
+                address: relay_payload.address.clone(),
+            }
+        })?;
+        let nonce = relay_payload.nonce;
+        log::info!("Relay address: {}, Nonce: {}", relay_address, nonce);
+
+        // ProxyFactory is the `to` address for proxy transactions
+        let proxy_factory: Address = contracts::PROXY_FACTORY.parse().expect("valid PROXY_FACTORY");
+        let relay_hub: Address = contracts::RELAY_HUB.parse().expect("valid RELAY_HUB");
+
+        // Encode transactions as proxy factory call data
+        let proxy_data = encode_proxy_call_data(&transactions);
+
+        // Gas limit for the inner call through the relay hub.
+        // The relay hub checks gasleft() >= gasLimit before forwarding the call.
+        // The relayer typically provides ~750K gas for the outer tx, so the inner
+        // gasLimit must fit within that minus relay overhead (~100K).
+        // CTF redeemPositions typically uses ~150-250K gas.
+        let gas_limit: u64 = 500_000;
+
+        // Sign the proxy transaction
+        let signature = sign_proxy_transaction(
+            &self.signer,
+            &eoa,
+            &proxy_factory,
+            &proxy_data,
+            gas_limit,
+            nonce,
+            &relay_hub,
+            &relay_address,
+        )
+        .await?;
+
+        // Build request body matching the official TypeScript format
+        let req = serde_json::json!({
+            "type": "PROXY",
+            "from": eoa_str,
+            "to": format!("{}", proxy_factory),
+            "proxyWallet": format!("{}", proxy_address),
+            "data": format!("0x{}", hex::encode(proxy_data.as_ref())),
+            "nonce": nonce.to_string(),
+            "signature": signature,
+            "signatureParams": {
+                "gasPrice": "0",
+                "gasLimit": gas_limit.to_string(),
+                "relayerFee": "0",
+                "relayHub": format!("{}", relay_hub),
+                "relay": format!("{}", relay_address)
+            },
+            "metadata": ""
+        });
+
+        let body = serde_json::to_string(&req).map_err(|e| SerializationError::JsonSerialize {
+            message: e.to_string(),
+        })?;
+        log::info!(
+            "Submitting Proxy request:\n{}",
+            serde_json::to_string_pretty(&req).unwrap_or_default()
+        );
+
+        let url = format!("{}{}", self.base_url, SUBMIT_TRANSACTION);
+        let headers =
+            build_builder_headers(&self.credentials, "POST", SUBMIT_TRANSACTION, &body)?;
+
+        let client = get_http_client(Some(&url));
+        let response = client
+            .post(&url)
+            .headers(headers)
+            .header("Content-Type", "application/json")
+            .body(body.clone())
+            .send()
+            .await
+            .map_err(|e| HttpError::from_reqwest(e, &url))?;
+
+        let status = response.status();
+        let body_text = response
+            .text()
+            .await
+            .map_err(|e| HttpError::ReadBody {
+                url: url.clone(),
+                message: e.to_string(),
+            })?;
+
+        if !status.is_success() {
+            log::error!("Submit Proxy failed with status {}: {}", status, body_text);
+            return Err(ApiError::UnexpectedStatus {
+                status: status.as_u16(),
+                url,
+                message: format!("submit_proxy failed: {}", body_text),
+                response_body: body_text,
+            }
+            .into());
+        }
+
+        log::info!("Submit Proxy response: {}", body_text);
+        Self::parse_submit_response(&body_text)
+    }
+
+    /// Parse a submit response from the relayer, handling different field naming conventions.
+    fn parse_submit_response(body_text: &str) -> Result<RelayerTransactionResponse> {
+        let json_value: serde_json::Value = serde_json::from_str(body_text).map_err(|e| {
             SerializationError::JsonDeserialize {
                 message: e.to_string(),
-                raw_response: String::new(),
+                raw_response: body_text.to_string(),
             }
-            .into()
+        })?;
+
+        // The relayer uses varying field names across versions
+        let transaction_id = json_value
+            .get("transactionID")
+            .or_else(|| json_value.get("transactionId"))
+            .or_else(|| json_value.get("transaction_id"))
+            .or_else(|| json_value.get("id"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let state_str = json_value
+            .get("state")
+            .and_then(|v| v.as_str())
+            .unwrap_or("New");
+
+        let state = match state_str {
+            "STATE_NEW" | "NEW" | "New" => RelayerTransactionState::New,
+            "STATE_EXECUTED" | "EXECUTED" => RelayerTransactionState::Executed,
+            "STATE_MINED" | "MINED" => RelayerTransactionState::Mined,
+            "STATE_CONFIRMED" | "CONFIRMED" => RelayerTransactionState::Confirmed,
+            "STATE_FAILED" | "FAILED" => RelayerTransactionState::Failed,
+            "STATE_INVALID" | "INVALID" => RelayerTransactionState::Invalid,
+            _ => {
+                log::warn!("Unknown transaction state: {}", state_str);
+                RelayerTransactionState::New
+            }
+        };
+
+        let hash = json_value
+            .get("transactionHash")
+            .or_else(|| json_value.get("hash"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        Ok(RelayerTransactionResponse {
+            transaction_id,
+            state,
+            hash,
         })
     }
 
@@ -600,6 +800,7 @@ impl RelayerClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
 
     fn test_credentials() -> BuilderCredentials {
         BuilderCredentials::new(
@@ -609,11 +810,18 @@ mod tests {
         )
     }
 
+    fn test_signer() -> PrivateKeySigner {
+        PrivateKeySigner::from_str(
+            "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+        ).unwrap()
+    }
+
     #[test]
     fn test_client_builder() {
         let client = RelayerClient::builder()
             .credentials(test_credentials())
             .signer_address("0x1234567890123456789012345678901234567890".to_string())
+            .signer(test_signer())
             .build();
 
         assert_eq!(client.base_url, RELAYER_API);
@@ -626,6 +834,7 @@ mod tests {
         let client = RelayerClient::builder()
             .credentials(test_credentials())
             .signer_address("0x1234567890123456789012345678901234567890".to_string())
+            .signer(test_signer())
             .tx_type(RelayerTxType::Proxy)
             .chain_id(80001) // Mumbai testnet
             .poll_interval_ms(1000)

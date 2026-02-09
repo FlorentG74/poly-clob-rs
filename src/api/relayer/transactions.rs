@@ -23,13 +23,42 @@ pub mod contracts {
 
     /// Neg Risk Adapter contract address.
     pub const NEG_RISK_ADAPTER: &str = "0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296";
+
+    /// Gnosis Safe Proxy Factory address on Polygon (used for CREATE2 derivation).
+    pub const SAFE_FACTORY: &str = "0xaacFeEa03eb1561C4e67d661e40682Bd20E3541b";
+
+    /// Gnosis Safe MultiSend contract address on Polygon.
+    pub const SAFE_MULTISEND: &str = "0xA238CBeb142c10Ef7Ad8442C6D1f9E89e07e7761";
+
+    /// Polymarket Proxy Wallet Factory address on Polygon mainnet.
+    pub const PROXY_FACTORY: &str = "0xaB45c5A4B0c941a2F231C04C3f49182e1A254052";
+
+    /// Polymarket Relay Hub address on Polygon mainnet.
+    pub const RELAY_HUB: &str = "0xD216153c06E857cD7f72665E0aF1d7D82172F494";
+
+    /// Init code hash for CREATE2 Proxy wallet address derivation.
+    pub const PROXY_INIT_CODE_HASH: [u8; 32] = [
+        0xd2, 0x1d, 0xf8, 0xdc, 0x65, 0x88, 0x0a, 0x86,
+        0x06, 0xf0, 0x9f, 0xe0, 0xce, 0x3d, 0xf9, 0xb8,
+        0x86, 0x92, 0x87, 0xab, 0x0b, 0x05, 0x8b, 0xe0,
+        0x5a, 0xa9, 0xe8, 0xaf, 0x63, 0x30, 0xa0, 0x0b,
+    ];
+
+    /// Init code hash for CREATE2 Safe address derivation.
+    /// keccak256 of the Safe proxy creation code with the singleton address.
+    pub const SAFE_INIT_CODE_HASH: [u8; 32] = [
+        0x2b, 0xce, 0x21, 0x27, 0xff, 0x07, 0xfb, 0x63,
+        0x2d, 0x16, 0xc8, 0x34, 0x7c, 0x4e, 0xbf, 0x50,
+        0x1f, 0x48, 0x41, 0x16, 0x8b, 0xed, 0x00, 0xd9,
+        0xe6, 0xef, 0x71, 0x5d, 0xdb, 0x6f, 0xce, 0xcf,
+    ];
 }
 
 /// Function selectors for CTF contract calls.
 mod selectors {
     /// `redeemPositions(address,bytes32,bytes32,uint256[])` function selector.
     /// keccak256("redeemPositions(address,bytes32,bytes32,uint256[])")[:4]
-    pub const REDEEM_POSITIONS: [u8; 4] = [0x31, 0x1d, 0x8a, 0x8e];
+    pub const REDEEM_POSITIONS: [u8; 4] = [0x01, 0xb7, 0x03, 0x7c];
 }
 
 /// Parameters for creating a redeem transaction.
@@ -166,6 +195,76 @@ pub fn create_redeem_all_tx(condition_id: &str) -> Result<Transaction> {
         condition_id: condition_id.to_string(),
         outcome_index: None, // Redeem both outcomes
     })
+}
+
+/// Encode transactions as a call to the ProxyWalletFactory's `proxy` function.
+///
+/// The proxy function signature is:
+/// `proxy((uint8 typeCode, address to, uint256 value, bytes data)[])`
+///
+/// This wraps the given transactions so they can be executed through the proxy wallet.
+pub fn encode_proxy_call_data(transactions: &[Transaction]) -> Bytes {
+    use alloy::primitives::keccak256;
+
+    // Function selector: keccak256("proxy((uint8,address,uint256,bytes)[])")[:4]
+    let selector = &keccak256("proxy((uint8,address,uint256,bytes)[])".as_bytes())[..4];
+
+    // ABI encoding of tuple[] argument
+    // The array is a dynamic type, so first word is offset to array data
+    let mut encoded = Vec::new();
+
+    // Offset to array data (= 32, one word)
+    encoded.extend_from_slice(&U256::from(32).to_be_bytes::<32>());
+
+    // Array length
+    encoded.extend_from_slice(&U256::from(transactions.len()).to_be_bytes::<32>());
+
+    // For dynamic-type elements, first encode offsets, then elements
+    // Each tuple contains `bytes` (dynamic), so tuples are dynamic
+    let mut offsets = Vec::new();
+    let mut elements = Vec::new();
+
+    // First pass: encode all elements and compute offsets
+    // Offsets are relative to the start of the elements section
+    // The offsets section itself is transactions.len() * 32 bytes
+    let offsets_section_size = transactions.len() * 32;
+
+    for tx in transactions {
+        offsets.push(offsets_section_size + elements.len());
+
+        // Encode tuple: (uint8, address, uint256, bytes)
+        // typeCode = 1 (Call). Values: 0=Invalid, 1=Call, 2=DelegateCall
+        elements.extend_from_slice(&U256::from(1).to_be_bytes::<32>());
+        // to (address, left-padded)
+        elements.extend_from_slice(&[0u8; 12]);
+        elements.extend_from_slice(tx.to.as_slice());
+        // value
+        elements.extend_from_slice(&tx.value.to_be_bytes::<32>());
+        // offset to bytes data (from start of this tuple = 4 * 32 = 128)
+        elements.extend_from_slice(&U256::from(128).to_be_bytes::<32>());
+        // bytes data: length + padded data
+        let data = tx.data.as_ref();
+        elements.extend_from_slice(&U256::from(data.len()).to_be_bytes::<32>());
+        elements.extend_from_slice(data);
+        // Pad to 32-byte boundary
+        let padding = (32 - (data.len() % 32)) % 32;
+        elements.extend_from_slice(&vec![0u8; padding]);
+    }
+
+    // Write offsets
+    for offset in offsets {
+        encoded.extend_from_slice(&U256::from(offset).to_be_bytes::<32>());
+    }
+
+    // Write elements
+    encoded.extend_from_slice(&elements);
+
+    // Prepend selector
+    let mut result = Vec::with_capacity(4 + encoded.len());
+    result.extend_from_slice(selector);
+    result.extend_from_slice(&encoded);
+
+    Bytes::from(result)
 }
 
 #[cfg(test)]

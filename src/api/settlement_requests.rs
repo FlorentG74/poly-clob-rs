@@ -8,6 +8,9 @@ use crate::api::relayer::client::RelayerClient;
 use crate::api::relayer::transactions::{create_redeem_tx, RedeemParams};
 use crate::api::relayer::types::{RelayerTransactionResponse, RelayerTxType};
 use crate::{Account, Result};
+use crate::api::error::AuthError;
+use alloy::signers::local::PrivateKeySigner;
+use std::str::FromStr;
 use typed_builder::TypedBuilder;
 
 /// Represents a settlement/redemption request for an expired market.
@@ -57,11 +60,20 @@ impl SettlementRequest {
         // Builder credentials must be in the environment
         let creds = BuilderCredentials::from_env()?;
 
-        // Use the account's poly_address as the signer
+        // Load signer from account's private key
+        let signer = PrivateKeySigner::from_str(&account.private_key)
+            .map_err(|e| AuthError::InvalidPrivateKey {
+                message: e.to_string(),
+            })?;
+
+        let signer_address = format!("{}", signer.address());
+
         let client = RelayerClient::builder()
             .credentials(creds)
-            .signer_address(account.poly_address.clone())
-            .tx_type(RelayerTxType::Safe) // Safe is the standard for most users
+            .signer_address(signer_address)
+            .signer(signer)
+            .wallet_address(Some(account.poly_address.clone()))
+            .tx_type(RelayerTxType::Safe)
             .build();
 
         // Create the redeem transaction
