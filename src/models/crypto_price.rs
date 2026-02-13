@@ -46,9 +46,11 @@ impl CryptoPriceResponse {
         self.completed && !self.incomplete
     }
 
-    /// Returns true if the open price is available for strike setting
+    /// Returns true if the open price is available for strike setting.
+    /// The `incomplete` flag indicates the event hasn't settled yet, not that
+    /// the open price is unavailable — open_price is populated as soon as the event starts.
     pub fn has_open_price(&self) -> bool {
-        !self.incomplete
+        self.open_price > 0.0
     }
 }
 
