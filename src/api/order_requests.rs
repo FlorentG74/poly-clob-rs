@@ -14,7 +14,7 @@ use crate::models::{Account, Order, OrderType, Side};
 use crate::{market_requests, MarketOrders, OpenOrder, WebserviceRequest, ORDERS, fee_requests};
 use reqwest::header::*;
 
-use super::clob_endpoints::{CLOB_API, CANCEL, POST_ORDER};
+use super::clob_endpoints::{CLOB_API, CANCEL, GET_ORDER, POST_ORDER};
 
 use crate::constants::raw_multiplier_decimal;
 
@@ -360,6 +360,60 @@ impl<'a> CancelOrderRequest<'a> {
 
         handle_api_response(response, &callable_url).await
     }
+}
+
+/// Response from querying a single order by ID.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct OrderStatusResponse {
+    pub id: String,
+    pub status: String,
+    #[serde(default)]
+    pub size_matched: String,
+    #[serde(default)]
+    pub original_size: String,
+    #[serde(default)]
+    pub price: String,
+}
+
+/// Fetches the status of a single order by its ID.
+///
+/// Calls `GET /data/order/{order_id}` with L2 authentication headers.
+///
+/// # Arguments
+/// * `signer` - The account that placed the order
+/// * `order_id` - The order ID to query
+///
+/// # Returns
+/// `Ok(OrderStatusResponse)` with the order's current status, or an error.
+pub async fn get_order_by_id(signer: &Account, order_id: &str) -> Result<OrderStatusResponse> {
+    let client = get_http_client(None);
+
+    let method = "GET";
+    let request_path = GET_ORDER;
+    let body = "";
+
+    let callable_url = format!("{}{}{}", CLOB_API, request_path, order_id);
+
+    let l2_headers = build_l2_headers(signer, method, request_path, body, "")?;
+
+    let response = client
+        .get(&callable_url)
+        .header(CONTENT_TYPE, "application/json")
+        .header(ACCEPT, "application/json")
+        .headers(l2_headers)
+        .send()
+        .await
+        .map_err(|e| crate::api::error::HttpError::from_reqwest(e, callable_url.clone()))?;
+
+    let response_text = handle_api_response(response, &callable_url).await?;
+
+    serde_json::from_str(&response_text).map_err(|e| {
+        crate::SerializationError::JsonDeserialize {
+            message: e.to_string(),
+            raw_response: response_text,
+        }
+        .into()
+    })
 }
 
 /// Returns all open orders for the given account.
