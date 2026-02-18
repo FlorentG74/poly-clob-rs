@@ -389,12 +389,14 @@ pub async fn get_order_by_id(signer: &Account, order_id: &str) -> Result<OrderSt
     let client = get_http_client(None);
 
     let method = "GET";
-    let request_path = GET_ORDER;
     let body = "";
 
-    let callable_url = format!("{}{}{}", CLOB_API, request_path, order_id);
+    // The full path (including order_id) must be signed — Python reference:
+    // endpoint = GET_ORDER + order_id; request_path=endpoint → build_hmac_signature
+    let signed_path = format!("{}{}", GET_ORDER, order_id);
+    let callable_url = format!("{}{}", CLOB_API, signed_path);
 
-    let l2_headers = build_l2_headers(signer, method, request_path, body, "")?;
+    let l2_headers = build_l2_headers(signer, method, &signed_path, body, "")?;
 
     let response = client
         .get(&callable_url)
@@ -545,6 +547,168 @@ mod tests {
     use rust_decimal::prelude::FromPrimitive;
 
     use super::*;
+
+    // -------------------------------------------------------------------------
+    // Auth integration tests
+    // -------------------------------------------------------------------------
+
+    /// Verifies that get_order_by_id() auth works end-to-end.
+    /// A non-401 response (including 404 "not found") means the HMAC was accepted.
+    ///
+    /// Run with: cargo test -p poly-clob-rs test_order_status_auth_live -- --nocapture
+    #[tokio::test]
+    async fn test_order_status_auth_live() {
+        let account = crate::models::Account::load_poly_account()
+            .expect("load poly account from .env");
+
+        let order_id = "0xfe71c215fb15bd66b983e98cf9f599a84b6581b6052fdb07b6317a33049cd662";
+
+        println!("\n=== Order auth test ===");
+        println!("order_id: {}", order_id);
+
+        let result = get_order_by_id(&account, order_id).await;
+
+        println!("result: {:?}", result);
+
+        // Auth is working if we get anything other than a 401 error.
+        // A 404 "not found" (order expired/gone) still means auth succeeded.
+        if let Err(ref e) = result {
+            assert!(
+                !e.to_string().contains("unauthorized"),
+                "L2 auth rejected: {}",
+                e
+            );
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // OrderStatusResponse deserialization tests
+    //
+    // These tests reproduce the real scenario of order
+    // 0x3256a66ed9fb6778f9b0212c13fad538e3f80052ead53253acac331f775a5331:
+    //   - GTD BUY UP at $0.53, qty 11.32 on eth-updown-15m-1771427700
+    //   - Order went "live" (resting on book)
+    //   - Auth failures prevented check_pending_order from detecting the fill
+    //   - Order was eventually matched on-chain
+    //   - fill_price parsing must NOT fall back to 0.0
+    // -------------------------------------------------------------------------
+
+    /// Matched order: all fields populated — the happy path when auth works.
+    #[test]
+    fn test_order_status_matched_deserialization() {
+        let json = r#"{
+            "id": "0x3256a66ed9fb6778f9b0212c13fad538e3f80052ead53253acac331f775a5331",
+            "status": "matched",
+            "size_matched": "11.32",
+            "original_size": "11.32",
+            "price": "0.53"
+        }"#;
+
+        let response: OrderStatusResponse = serde_json::from_str(json).unwrap();
+
+        assert_eq!(response.id, "0x3256a66ed9fb6778f9b0212c13fad538e3f80052ead53253acac331f775a5331");
+        assert_eq!(response.status, "matched");
+        assert_eq!(response.size_matched, "11.32");
+        assert_eq!(response.original_size, "11.32");
+        assert_eq!(response.price, "0.53");
+
+        // Simulate how check_pending_order extracts fill_price
+        let limit_price = 0.53_f64;
+        let fill_price = response.price.parse::<f64>().unwrap_or(limit_price);
+        assert_eq!(fill_price, 0.53);
+
+        // Simulate how check_pending_order extracts filled_quantity
+        let fallback_qty = 11.32_f64;
+        let filled_quantity = response.size_matched.parse::<f64>().unwrap_or(fallback_qty);
+        assert_eq!(filled_quantity, 11.32);
+    }
+
+    /// Live order with no fill yet: the state the bot was stuck in during auth failures.
+    /// The bot placed the GTD at 16:22:33 and got back status="live", takingAmount="", makingAmount="".
+    #[test]
+    fn test_order_status_live_no_fill() {
+        let json = r#"{
+            "id": "0x3256a66ed9fb6778f9b0212c13fad538e3f80052ead53253acac331f775a5331",
+            "status": "live",
+            "size_matched": "0",
+            "original_size": "11.32",
+            "price": "0.53"
+        }"#;
+
+        let response: OrderStatusResponse = serde_json::from_str(json).unwrap();
+
+        assert_eq!(response.status, "live");
+
+        let size_matched = response.size_matched.parse::<f64>().unwrap_or(0.0);
+        assert_eq!(size_matched, 0.0);
+        // size_matched == 0.0 → no partial fill, bot should continue waiting
+    }
+
+    /// Live order with partial fill: size_matched > 0 but status still "live".
+    /// check_pending_order treats this as fully filled and cancels the remainder.
+    #[test]
+    fn test_order_status_live_partial_fill() {
+        let json = r#"{
+            "id": "0x3256a66ed9fb6778f9b0212c13fad538e3f80052ead53253acac331f775a5331",
+            "status": "live",
+            "size_matched": "5.66",
+            "original_size": "11.32",
+            "price": "0.53"
+        }"#;
+
+        let response: OrderStatusResponse = serde_json::from_str(json).unwrap();
+
+        let size_matched = response.size_matched.parse::<f64>().unwrap_or(0.0);
+        assert!(size_matched > 0.0, "partial fill should be detected");
+
+        // fill_price should parse correctly — must NOT fall back to 0.0
+        let limit_price = 0.53_f64;
+        let fill_price = response.price.parse::<f64>().unwrap_or(limit_price);
+        assert!(fill_price > 0.0, "fill_price must never be 0.0 — would corrupt stop loss");
+        assert_eq!(fill_price, 0.53);
+    }
+
+    /// Missing price field: #[serde(default)] fills it with "".
+    /// parse::<f64>() on "" fails → fallback to limit_price.
+    /// This ensures entry_price is never 0.0 when the limit price is known.
+    #[test]
+    fn test_order_status_missing_price_falls_back_to_limit_price() {
+        let json = r#"{
+            "id": "0x3256a66ed9fb6778f9b0212c13fad538e3f80052ead53253acac331f775a5331",
+            "status": "matched",
+            "size_matched": "11.32",
+            "original_size": "11.32"
+        }"#;
+
+        let response: OrderStatusResponse = serde_json::from_str(json).unwrap();
+
+        assert_eq!(response.price, "", "missing price deserializes to empty string");
+
+        let limit_price = 0.53_f64;
+        let fill_price = response.price.parse::<f64>().unwrap_or(limit_price);
+
+        // Must fall back to limit_price, never 0.0
+        assert_eq!(fill_price, limit_price);
+        assert!(fill_price > 0.0, "fill_price must never be 0.0");
+    }
+
+    /// Cancelled order: pending_order should be cleared, no fill recorded.
+    #[test]
+    fn test_order_status_cancelled_deserialization() {
+        let json = r#"{
+            "id": "0x3256a66ed9fb6778f9b0212c13fad538e3f80052ead53253acac331f775a5331",
+            "status": "cancelled",
+            "size_matched": "0",
+            "original_size": "11.32",
+            "price": "0.53"
+        }"#;
+
+        let response: OrderStatusResponse = serde_json::from_str(json).unwrap();
+
+        assert_eq!(response.status, "cancelled");
+        let size_matched = response.size_matched.parse::<f64>().unwrap_or(0.0);
+        assert_eq!(size_matched, 0.0);
+    }
 
     #[test]
     fn test_buy_order_amount_calculation_with_exact_decimals() {
