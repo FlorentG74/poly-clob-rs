@@ -26,7 +26,7 @@ hmac = "0.12.1"
 base64 = { version = "0.22.1" }
 strum_macros = "0.27.2"
 typed-builder = "0.23"
-alloy = { version = "1.2.1", features = ["dyn-abi", "signer-local"] }
+alloy = { workspace = true, features = ["dyn-abi", "signer-local"] }
 log = "0.4.29"
 thiserror = "1.0"
 rust_decimal = { version = "1.39", features = ["serde"] }
