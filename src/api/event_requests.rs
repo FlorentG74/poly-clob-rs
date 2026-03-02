@@ -55,7 +55,7 @@ impl<'a> EventBySlugRequest<'a> {
 
         let callable_url = web_service_request.get_callable_url(0);
         let events =
-            WebserviceRequest::fetch_one::<Vec<PolyResponseEvent>>(&client, &web_service_request)
+            WebserviceRequest::fetch_one::<Vec<PolyResponseEvent>>(client, &web_service_request)
                 .await?;
 
         events.into_iter().next().ok_or_else(|| {
@@ -93,7 +93,7 @@ impl<'a> EventSeriesRequest<'a> {
 
         let callable_url = web_service_request.get_callable_url(0);
         let series =
-            WebserviceRequest::fetch_one::<Vec<PolyResponseEventSeries>>(&client, &web_service_request)
+            WebserviceRequest::fetch_one::<Vec<PolyResponseEventSeries>>(client, &web_service_request)
                 .await?;
 
         series.into_iter().next().ok_or_else(|| {

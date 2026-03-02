@@ -255,7 +255,7 @@ pub async fn sign_safe_transaction(
     // v=0|1 -> v+31, v=27|28 -> v+4
     if v <= 1 {
         v += 31;
-    } else if v >= 27 && v <= 28 {
+    } else if (27..=28).contains(&v) {
         v += 4;
     }
 

@@ -223,7 +223,7 @@ impl<'a> OrderBooksRequest<'a> {
         let client = get_http_client(None);
 
         // fetch_one returns Option<T>, handle the None case
-        match WebserviceRequest::fetch_one::<OrderBooksResponse>(&client, &ws_request).await {
+        match WebserviceRequest::fetch_one::<OrderBooksResponse>(client, &ws_request).await {
             Ok(books) => {
                 log::debug!("Successfully fetched {} order books", books.len());
                 Ok(books)

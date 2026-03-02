@@ -205,7 +205,7 @@ impl<'a> MarketBySlugRequest<'a> {
         };
 
         super::webservice_request::WebserviceRequest::fetch_one::<PolyResponseMarket>(
-            &client,
+            client,
             &web_service_request,
         )
         .await
@@ -511,7 +511,7 @@ impl<'a> MarketsRequest<'a> {
 
         let (_, markets) =
             super::webservice_request::WebserviceRequest::fetch_batch::<MarketsResponse>(
-                &client,
+                client,
                 &web_service_request,
                 self.offset,
             )

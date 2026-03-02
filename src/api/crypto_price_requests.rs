@@ -67,7 +67,7 @@ impl<'a> CryptoPriceRequest<'a> {
             body: None,
         };
 
-        WebserviceRequest::fetch_one::<CryptoPriceResponse>(&client, &web_service_request).await
+        WebserviceRequest::fetch_one::<CryptoPriceResponse>(client, &web_service_request).await
     }
 }
 
