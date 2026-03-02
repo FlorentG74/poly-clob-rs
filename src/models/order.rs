@@ -149,7 +149,7 @@ impl Order {
     pub fn validate_order(&self) -> Result<()> {
         //for buy orders, token quantity should be > 5 and USD amount should be >= 1.0
         if self.side == Side::Buy
-            && (self.maker_amount <= 1 * (RAW_UNIT_MULTIPLIER as i32)
+            && (self.maker_amount <= (RAW_UNIT_MULTIPLIER as i32)
                 || self.taker_amount < 5 * (RAW_UNIT_MULTIPLIER as i32))
         {
             return Err(ValidationError::InvalidAmount {
