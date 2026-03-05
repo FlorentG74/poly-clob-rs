@@ -34,7 +34,7 @@ impl SettlementRequest {
     /// # Arguments
     ///
     /// * `account` - The account containing the signer address. Builder credentials
-    ///               must be available in environment variables.
+    ///   must be available in environment variables.
     ///
     /// # Returns
     ///

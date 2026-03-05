@@ -188,12 +188,7 @@ impl ClobError {
     /// This includes both auth errors (missing credentials, invalid keys)
     /// and authorization errors (401, 403).
     pub fn is_auth_error(&self) -> bool {
-        match self {
-            ClobError::Auth(_) => true,
-            ClobError::Api(ApiError::Unauthorized { .. }) => true,
-            ClobError::Api(ApiError::Forbidden { .. }) => true,
-            _ => false,
-        }
+        matches!(self, ClobError::Auth(_) | ClobError::Api(ApiError::Unauthorized { .. }) | ClobError::Api(ApiError::Forbidden { .. }))
     }
 
     /// Returns true if this error indicates a client-side bug or invalid input.
@@ -201,14 +196,7 @@ impl ClobError {
     /// These errors typically should not be retried and may indicate
     /// bugs in the calling code.
     pub fn is_client_error(&self) -> bool {
-        match self {
-            ClobError::Validation(_) => true,
-            ClobError::Api(ApiError::BadRequest { .. }) => true,
-            ClobError::Api(ApiError::NotFound { .. }) => true,
-            ClobError::Serialization(_) => true,
-            ClobError::NotImplemented { .. } => true,
-            _ => false,
-        }
+        matches!(self, ClobError::Validation(_) | ClobError::Api(ApiError::BadRequest { .. }) | ClobError::Api(ApiError::NotFound { .. }) | ClobError::Serialization(_) | ClobError::NotImplemented { .. })
     }
 
     /// Returns true if this is a recoverable order error.
@@ -756,11 +744,7 @@ pub enum RelayerError {
 impl RelayerError {
     /// Returns true if this error is retryable.
     pub fn is_retryable(&self) -> bool {
-        match self {
-            RelayerError::PollingTimeout { .. } => true,
-            RelayerError::InvalidNonce { .. } => true,
-            _ => false,
-        }
+        matches!(self, RelayerError::PollingTimeout { .. } | RelayerError::InvalidNonce { .. })
     }
 
     /// Returns suggested retry delay.
