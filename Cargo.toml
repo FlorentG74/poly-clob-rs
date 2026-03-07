@@ -13,23 +13,24 @@ keywords = ["polymarket", "prediction-markets", "clob", "api", "blockchain"]
 categories = ["api-bindings", "web-programming::http-client", "cryptography::cryptocurrencies"]
 
 [dependencies]
-serde = { version = "^1.0", default-features = false, features = ["derive"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }
+rust_decimal = { workspace = true }
+futures-executor = { workspace = true }
+alloy = { workspace = true, features = ["dyn-abi", "signer-local"] }
+
 reqwest = { version = "0.12.28", features = ["rustls-tls", "json"] }
-futures = { version = "0.3" }
-serde_json = "1.0"
-tokio = { version = "1.48.0",  default-features = false, features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", default-features = false, features = ["macros", "rt-multi-thread"] }
 dotenv = "0.15.0"
 hex = { version = "0.4.3" }
-chrono = { version = "0.4.42", features = ["serde"] }
 sha2 = { version = "0.10.9" }
 hmac = "0.12.1"
 base64 = { version = "0.22.1" }
 strum_macros = "0.27.2"
 typed-builder = "0.23"
-alloy = { workspace = true, features = ["dyn-abi", "signer-local"] }
-log = "0.4.29"
-thiserror = "1.0"
-rust_decimal = { version = "1.39", features = ["serde"] }
 diesel = { version = "2.3.5", features = ["postgres"], optional = true }
 
 [dev-dependencies]

@@ -4,7 +4,7 @@ use alloy::{
     primitives::{keccak256, Address, B256, U256},
     signers::{local::PrivateKeySigner, Signer as AlloySigner},
 };
-use futures::executor::block_on;
+use futures_executor::block_on;
 use std::str::FromStr;
 
 use crate::api::error::{AuthError, Result};
