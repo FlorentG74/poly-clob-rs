@@ -19,6 +19,9 @@ use super::{WebserviceRequest, GET_CRYPTO_PRICE, POLYMARKET_API};
 /// - **Strike setting**: Get the `open_price` at event start
 /// - **Settlement**: Get the `close_price` at event maturity (when `completed=true`)
 ///
+/// The `eventStartTime` parameter is sent in **milliseconds** as required by the
+/// Polymarket API, even though `event_start_time` is provided in seconds.
+///
 /// # Example
 ///
 /// ```rust,no_run
@@ -29,6 +32,7 @@ use super::{WebserviceRequest, GET_CRYPTO_PRICE, POLYMARKET_API};
 ///     let response = CryptoPriceRequest::builder()
 ///         .symbol("ETH")
 ///         .event_start_time(1738023000)
+///         .variant("hourly")
 ///         .build()
 ///         .execute()
 ///         .await?;
@@ -46,8 +50,12 @@ pub struct CryptoPriceRequest<'a> {
     #[builder(setter(into))]
     pub symbol: &'a str,
 
-    /// Event start time as Unix timestamp in seconds
+    /// Event start time as Unix timestamp in **seconds** (converted to ms internally)
     pub event_start_time: i64,
+
+    /// Market duration variant: "fiveminute" (5m), "fifteen" (15m), "hourly", "fourhour", "daily".
+    #[builder(setter(into))]
+    pub variant: &'a str,
 }
 
 impl<'a> CryptoPriceRequest<'a> {
@@ -55,15 +63,21 @@ impl<'a> CryptoPriceRequest<'a> {
     pub async fn execute(&self) -> Result<CryptoPriceResponse> {
         let client = get_http_client(None);
 
+        // API requires eventStartTime in milliseconds
+        let event_start_time_ms = self.event_start_time * 1000;
+
+        let args = vec![
+            ("symbol".to_string(), self.symbol.to_string()),
+            ("eventStartTime".to_string(), event_start_time_ms.to_string()),
+            ("variant".to_string(), self.variant.to_string()),
+        ];
+
         let web_service_request = WebserviceRequest {
             api: POLYMARKET_API.to_string(),
             url: GET_CRYPTO_PRICE.to_string(),
             method: Method::GET,
             with_pagination: false,
-            args: vec![
-                ("symbol".to_string(), self.symbol.to_string()),
-                ("eventStartTime".to_string(), self.event_start_time.to_string()),
-            ],
+            args,
             body: None,
         };
 
@@ -71,23 +85,3 @@ impl<'a> CryptoPriceRequest<'a> {
     }
 }
 
-impl WebserviceRequest {
-    /// Create a new request for fetching crypto prices at an event time.
-    ///
-    /// # Arguments
-    /// * `symbol` - Crypto symbol (e.g., "BTC", "ETH", "SOL", "XRP")
-    /// * `event_start_time` - Event start time as Unix timestamp in seconds
-    pub fn new_crypto_price_request(symbol: &str, event_start_time: i64) -> Self {
-        WebserviceRequest {
-            api: POLYMARKET_API.to_string(),
-            url: GET_CRYPTO_PRICE.to_string(),
-            method: Method::GET,
-            with_pagination: false,
-            args: vec![
-                ("symbol".to_string(), symbol.to_string()),
-                ("eventStartTime".to_string(), event_start_time.to_string()),
-            ],
-            body: None,
-        }
-    }
-}

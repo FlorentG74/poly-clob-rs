@@ -23,21 +23,21 @@ use super::ApiResponse;
 ///   "cached": false
 /// }
 /// ```
+/// Both `openPrice` and `closePrice` may be `null` when the API hasn't
+/// populated the price yet (e.g. very early in a new market's life).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CryptoPriceResponse {
-    /// The opening price at event start time
-    pub open_price: f64,
-    /// The closing price at event maturity (only valid if completed=true)
-    pub close_price: f64,
+    /// The opening price at event start time. `None` if not yet available.
+    pub open_price: Option<f64>,
+    /// The closing price at event maturity (only valid if completed=true). `None` if not yet available.
+    pub close_price: Option<f64>,
     /// Server timestamp in milliseconds
     pub timestamp: i64,
     /// Whether the event has completed and close_price is final
     pub completed: bool,
     /// Whether the price data is incomplete/unavailable
     pub incomplete: bool,
-    /// Whether this response was served from cache
-    pub cached: bool,
 }
 
 impl CryptoPriceResponse {
@@ -47,10 +47,8 @@ impl CryptoPriceResponse {
     }
 
     /// Returns true if the open price is available for strike setting.
-    /// The `incomplete` flag indicates the event hasn't settled yet, not that
-    /// the open price is unavailable — open_price is populated as soon as the event starts.
     pub fn has_open_price(&self) -> bool {
-        self.open_price > 0.0
+        self.open_price.map(|p| p > 0.0).unwrap_or(false)
     }
 }
 

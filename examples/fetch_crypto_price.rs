@@ -18,32 +18,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let response = CryptoPriceRequest::builder()
         .symbol(symbol)
         .event_start_time(event_start_time)
+        .variant("fifteen") // 15m event
         .build()
         .execute()
         .await?;
 
     println!("\nCrypto Price Response:");
-    println!("  Open Price:  ${:.2}", response.open_price);
-    println!("  Close Price: ${:.2}", response.close_price);
+    println!("  Open Price:  {:?}", response.open_price);
+    println!("  Close Price: {:?}", response.close_price);
     println!("  Completed:   {}", response.completed);
     println!("  Incomplete:  {}", response.incomplete);
-    println!("  Cached:      {}", response.cached);
     println!("  Timestamp:   {}", response.timestamp);
 
     // Check if valid for different use cases
-    if response.has_open_price() {
-        println!("\n  Strike price available: ${:.2}", response.open_price);
+    if let Some(open) = response.open_price {
+        println!("\n  Strike price available: ${:.2}", open);
     }
 
     if response.is_valid_for_settlement() {
-        println!("  Settlement price available: ${:.2}", response.close_price);
-        let direction = if response.close_price > response.open_price {
-            "UP"
-        } else {
-            "DOWN"
-        };
-        println!("  Outcome: {} (close {} open)", direction,
-            if response.close_price > response.open_price { ">" } else { "<=" });
+        if let (Some(close), Some(open)) = (response.close_price, response.open_price) {
+            let direction = if close > open { "UP" } else { "DOWN" };
+            println!("  Settlement price available: ${:.2}", close);
+            println!("  Outcome: {} (close {} open)", direction, if close > open { ">" } else { "<=" });
+        }
     } else {
         println!("\n  Event not yet completed - settlement price not final");
     }
