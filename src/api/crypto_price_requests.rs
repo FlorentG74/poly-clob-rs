@@ -37,7 +37,7 @@ use super::{WebserviceRequest, GET_CRYPTO_PRICE, POLYMARKET_API};
 ///         .execute()
 ///         .await?;
 ///
-///     println!("Open: {}, Close: {}", response.open_price, response.close_price);
+///     println!("Open: {:?}, Close: {:?}", response.open_price, response.close_price);
 ///     if response.is_valid_for_settlement() {
 ///         println!("Event is settled");
 ///     }

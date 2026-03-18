@@ -64,13 +64,15 @@ pub struct OrderBook {
 
 impl OrderBook {
     /// Returns the best (highest price) bid level.
+    /// Bids are sorted descending (REST convention), so the first element is the highest bid.
     pub fn best_bid(&self) -> Option<&OrderBookLevel> {
-        self.bids.last()
+        self.bids.first()
     }
 
     /// Returns the best (lowest price) ask level.
+    /// Asks are sorted ascending (REST convention), so the first element is the lowest ask.
     pub fn best_ask(&self) -> Option<&OrderBookLevel> {
-        self.asks.last()
+        self.asks.first()
     }
 
     /// Returns the total bid depth (sum of all bid sizes).
@@ -249,13 +251,13 @@ mod tests {
         // Test ask depth: 75.0 + 125.5 = 200.5
         assert!((orderbook.get_ask_depth() - 200.5).abs() < 0.001);
 
-        // Test best bid (last in the list)
+        // Test best bid (first in the descending-sorted list = highest price)
         let best_bid = orderbook.best_bid().unwrap();
-        assert_eq!(best_bid.price, Some(0.48));
+        assert_eq!(best_bid.price, Some(0.50));
 
-        // Test best ask (last in the list)
+        // Test best ask (first in the ascending-sorted list = lowest price)
         let best_ask = orderbook.best_ask().unwrap();
-        assert_eq!(best_ask.price, Some(0.52));
+        assert_eq!(best_ask.price, Some(0.51));
     }
 
     #[test]
@@ -330,10 +332,10 @@ mod tests {
             neg_risk: None,
         };
 
-        // Note: bids sorted descending, so last() is lowest price (0.48)
-        // This matches the API behavior
-        assert!((orderbook.best_bid_price() - 0.48).abs() < 0.001);
-        assert!((orderbook.best_ask_price() - 0.52).abs() < 0.001);
+        // Bids sorted descending: first() is highest price (0.50) = true best bid
+        // Asks sorted ascending: first() is lowest price (0.51) = true best ask
+        assert!((orderbook.best_bid_price() - 0.50).abs() < 0.001);
+        assert!((orderbook.best_ask_price() - 0.51).abs() < 0.001);
 
         // bid_depth_to_price: sum of sizes for bids >= 0.49
         // 0.50 (100) + 0.49 (200) = 300

@@ -23,7 +23,9 @@ pub struct PolyResponseEventSeries {
     //restricted: bool,
     //created_at: String,
     //updated_at: String,
+    #[serde(default)]
     pub volume: f64,
+    #[serde(default)]
     pub liquidity: f64,
     pub events: Vec<Event>,
     //comment_count: i64,
