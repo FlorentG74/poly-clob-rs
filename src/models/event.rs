@@ -26,7 +26,8 @@ pub struct PolyResponseEvent {
     pub restricted: bool,
     //liquidity: f64,
     //volume: f64,
-    pub open_interest: i64,
+    #[serde(default)]
+    pub open_interest: f64,
     pub created_at: String,
     pub updated_at: String,
     //competitive: f64,
