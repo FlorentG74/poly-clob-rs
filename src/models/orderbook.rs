@@ -60,6 +60,14 @@ pub struct OrderBook {
     /// Whether this is a negative risk market
     #[serde(default)]
     pub neg_risk: Option<bool>,
+    /// Authoritative best bid from WS price_change message (server-reported, not level-derived).
+    /// Set by the WS cache on every incremental update; None for REST/replay snapshots.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ws_best_bid: Option<f32>,
+    /// Authoritative best ask from WS price_change message (server-reported, not level-derived).
+    /// Prevents stale ghost ask levels from being used as entry prices.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ws_best_ask: Option<f32>,
 }
 
 impl OrderBook {
@@ -90,16 +98,31 @@ impl OrderBook {
     }
 
     /// Returns the best bid price (highest buy price).
-    /// Returns 0.0 if no bids are available.
+    ///
+    /// Prefers the server-authoritative value from WS `price_change` messages
+    /// (`ws_best_bid`) when available. Falls back to the level-derived value
+    /// for REST/replay snapshots that have no WS-authoritative data.
     pub fn best_bid_price(&self) -> f64 {
+        if let Some(v) = self.ws_best_bid {
+            return v as f64;
+        }
         self.best_bid()
             .and_then(|l| l.price)
             .unwrap_or(0.0) as f64
     }
 
     /// Returns the best ask price (lowest sell price).
-    /// Returns 0.0 if no asks are available.
+    ///
+    /// Prefers the server-authoritative value from WS `price_change` messages
+    /// (`ws_best_ask`) when available. This prevents stale ghost ask levels
+    /// (consumed orders whose `size=0` removal message was delayed/dropped)
+    /// from being used as entry prices.
+    ///
+    /// Falls back to the level-derived value for REST/replay snapshots.
     pub fn best_ask_price(&self) -> f64 {
+        if let Some(v) = self.ws_best_ask {
+            return v as f64;
+        }
         self.best_ask()
             .and_then(|l| l.price)
             .unwrap_or(0.0) as f64
@@ -192,6 +215,8 @@ mod tests {
                 min_order_size: None,
                 tick_size: None,
                 neg_risk: None,
+                ws_best_bid: None,
+                ws_best_ask: None,
             },
             OrderBook {
                 market: "market2".to_string(),
@@ -203,6 +228,8 @@ mod tests {
                 min_order_size: None,
                 tick_size: None,
                 neg_risk: None,
+                ws_best_bid: None,
+                ws_best_ask: None,
             },
         ];
 
@@ -243,6 +270,8 @@ mod tests {
             min_order_size: None,
             tick_size: None,
             neg_risk: None,
+            ws_best_bid: None,
+            ws_best_ask: None,
         };
 
         // Test bid depth: 100.5 + 200.25 + 50.0 = 350.75
@@ -285,6 +314,8 @@ mod tests {
             min_order_size: None,
             tick_size: None,
             neg_risk: None,
+            ws_best_bid: None,
+            ws_best_ask: None,
         };
 
         // Only 100.0 + 50.0 = 150.0 (None is skipped)
@@ -303,6 +334,8 @@ mod tests {
             min_order_size: None,
             tick_size: None,
             neg_risk: None,
+            ws_best_bid: None,
+            ws_best_ask: None,
         };
 
         assert_eq!(orderbook.get_bid_depth(), 0.0);
@@ -330,6 +363,8 @@ mod tests {
             min_order_size: None,
             tick_size: None,
             neg_risk: None,
+            ws_best_bid: None,
+            ws_best_ask: None,
         };
 
         // Bids sorted descending: first() is highest price (0.50) = true best bid
@@ -362,6 +397,8 @@ mod tests {
             min_order_size: None,
             tick_size: None,
             neg_risk: None,
+            ws_best_bid: None,
+            ws_best_ask: None,
         };
 
         assert_eq!(orderbook.best_bid_price(), 0.0);
