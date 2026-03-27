@@ -6,7 +6,7 @@ use super::ApiResponse;
 
 pub type PositionsResponse = Vec<Position>;
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct Position {
     pub proxy_wallet: String,
