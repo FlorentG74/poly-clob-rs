@@ -5,7 +5,7 @@
 use crate::api::response_handler::handle_api_response;
 use reqwest::{Client, Method};
 
-use crate::models::ApiResponse;
+use crate::models::{ApiResponse, KeysetApiResponse};
 
 
 
@@ -237,6 +237,133 @@ impl WebserviceRequest {
                 raw_response: response_text.clone(),
             })
         })
+    }
+
+    /// Build a URL for a keyset-paginated request.
+    ///
+    /// Unlike [`get_callable_url`], this method does **not** inject an `offset`
+    /// parameter. Instead it appends `after_cursor` when a cursor is provided.
+    /// Other query params from `self.args` are appended as usual.
+    pub fn get_keyset_url(&self, cursor: Option<&str>) -> String {
+        let api = &self.api;
+        let url = &self.url;
+        let limit = self.get_limit();
+
+        let mut callable_url = format!("{api}{url}?limit={limit}");
+
+        if let Some(c) = cursor {
+            if !c.is_empty() {
+                Self::add_param_to_url(&mut callable_url, "after_cursor", c);
+            }
+        }
+
+        for (param_name, param_value) in self.args.iter() {
+            if param_name == "limit" {
+                continue; // already written in the ?limit= prefix
+            }
+            Self::add_param_to_url(&mut callable_url, param_name.as_str(), param_value.as_str());
+        }
+        callable_url
+    }
+
+    /// Fetch one page from a keyset-paginated endpoint.
+    ///
+    /// Returns `(next_cursor, response)` where `next_cursor` is `None` when
+    /// there are no more pages.
+    ///
+    /// # Arguments
+    ///
+    /// * `client` - The reqwest HTTP client to use
+    /// * `web_service_request` - The request configuration (URL, method, parameters)
+    /// * `cursor` - The cursor from the previous response, or `None` for the first page
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use poly_clob_rs::{WebserviceRequest, models::KeysetMarketsResponse};
+    /// use reqwest::Method;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let client = reqwest::Client::new();
+    /// let request = WebserviceRequest {
+    ///     api: "https://gamma-api.polymarket.com".to_string(),
+    ///     url: "/markets/keyset".to_string(),
+    ///     method: Method::GET,
+    ///     with_pagination: false,
+    ///     args: vec![],
+    ///     body: None,
+    /// };
+    ///
+    /// let mut cursor: Option<String> = None;
+    /// loop {
+    ///     let (next, page) = WebserviceRequest::fetch_keyset::<KeysetMarketsResponse>(
+    ///         &client, &request, cursor.as_deref(),
+    ///     ).await?;
+    ///     println!("Got {} markets", page.data.len());
+    ///     cursor = next;
+    ///     if cursor.is_none() { break; }
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn fetch_keyset<T>(
+        client: &Client,
+        web_service_request: &WebserviceRequest,
+        cursor: Option<&str>,
+    ) -> crate::Result<(Option<String>, T)>
+    where
+        T: for<'a> serde::Deserialize<'a> + KeysetApiResponse,
+    {
+        let callable_url = web_service_request.get_keyset_url(cursor);
+
+        log::debug!(
+            "Calling keyset method: {} on url: {}",
+            web_service_request.method,
+            callable_url,
+        );
+
+        let request = match web_service_request.method {
+            Method::GET => client.get(&callable_url),
+            Method::POST => {
+                let req = client.post(&callable_url);
+                if let Some(body) = web_service_request.get_body() {
+                    req.body(body)
+                } else {
+                    req
+                }
+            }
+            _ => {
+                return Err(crate::ClobError::Validation(
+                    crate::ValidationError::InvalidParameter {
+                        parameter: "method".to_string(),
+                        reason: format!("Unsupported method: {}", web_service_request.method),
+                    },
+                ));
+            }
+        };
+
+        let response = request
+            .send()
+            .await
+            .map_err(|e| crate::HttpError::from_reqwest(e, &callable_url))?;
+
+        let response_text = handle_api_response(response, &callable_url).await?;
+
+        let ws_response: T = serde_json::from_str(&response_text).map_err(|e| {
+            crate::ClobError::from(crate::SerializationError::JsonDeserialize {
+                message: e.to_string(),
+                raw_response: response_text.clone(),
+            })
+        })?;
+
+        log::debug!(
+            "Keyset page: {} results, next_cursor={:?}",
+            ws_response.nb_results(),
+            ws_response.next_cursor()
+        );
+
+        let next_cursor = ws_response.next_cursor().map(|s| s.to_owned());
+        Ok((next_cursor, ws_response))
     }
 
     pub fn add_param_to_url(url: &mut String, name: &str, value: &str) {
