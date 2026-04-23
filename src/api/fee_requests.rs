@@ -57,7 +57,7 @@ mod tests {
             .await
         {
             Ok(markets) => {
-                if let Some(first_market) = markets.first() {
+                if let Some(first_market) = markets.data.first() {
                     println!("✓ Found market: {}", first_market.question.as_deref().unwrap_or("N/A"));
 
                     if let Some(clob_token_ids) = &first_market.clob_token_ids {
@@ -111,7 +111,7 @@ mod tests {
             .await
         {
             Ok(markets) => {
-                if let Some(market) = markets.first() {
+                if let Some(market) = markets.data.first() {
                     if let Some(clob_token_ids_str) = &market.clob_token_ids {
                         if let Ok(token_ids) = serde_json::from_str::<Vec<String>>(clob_token_ids_str) {
                             if let Some(token_id) = token_ids.first() {
@@ -151,7 +151,7 @@ mod tests {
             .await
             .expect("Failed to fetch markets");
 
-        if let Some(first_market) = markets.first() {
+        if let Some(first_market) = markets.data.first() {
             if let Some(clob_token_ids_str) = &first_market.clob_token_ids {
                 if let Ok(token_ids) = serde_json::from_str::<Vec<String>>(clob_token_ids_str) {
                     if let Some(token_id) = token_ids.first() {
