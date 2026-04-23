@@ -134,7 +134,7 @@ impl<'a> EventSeriesRequest<'a> {
 ///         .await?;
 ///
 ///     println!("Got {} events", page.data.len());
-///     cursor = page.next_cursor.clone().filter(|s| !s.is_empty());
+///     cursor = page.next_cursor.clone();
 ///     if cursor.is_none() { break; }
 /// }
 /// # Ok(())
@@ -299,85 +299,63 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
-    // KeysetApiResponse trait tests (pure model logic, no network)
+    // KeysetApiResponse deserialization tests
+    // The empty-string invariant is enforced at parse time by deserialize_cursor,
+    // so these tests drive through JSON rather than constructing structs directly.
     // -------------------------------------------------------------------------
 
+    fn parse_markets(json: &str) -> KeysetMarketsResponse {
+        serde_json::from_str(json).expect("invalid JSON")
+    }
+
+    fn parse_events(json: &str) -> KeysetEventsResponse {
+        serde_json::from_str(json).expect("invalid JSON")
+    }
+
     #[test]
-    fn test_keyset_markets_response_next_cursor_some() {
-        let resp = KeysetMarketsResponse {
-            data: vec![],
-            next_cursor: Some("cursor_abc".to_string()),
-            limit: Some(100),
-            count: Some(0),
-        };
+    fn test_markets_cursor_present() {
+        let resp = parse_markets(r#"{"markets":[],"next_cursor":"cursor_abc"}"#);
         assert_eq!(resp.next_cursor(), Some("cursor_abc"));
+        assert_eq!(resp.next_cursor, Some("cursor_abc".to_string()));
     }
 
     #[test]
-    fn test_keyset_markets_response_next_cursor_none() {
-        let resp = KeysetMarketsResponse {
-            data: vec![],
-            next_cursor: None,
-            limit: Some(100),
-            count: Some(0),
-        };
+    fn test_markets_cursor_null() {
+        let resp = parse_markets(r#"{"markets":[],"next_cursor":null}"#);
         assert_eq!(resp.next_cursor(), None);
+        assert!(resp.next_cursor.is_none());
     }
 
     #[test]
-    fn test_keyset_markets_response_next_cursor_empty_string() {
-        let resp = KeysetMarketsResponse {
-            data: vec![],
-            next_cursor: Some("".to_string()),
-            limit: Some(100),
-            count: Some(0),
-        };
-        // Empty string means no more pages
+    fn test_markets_cursor_empty_string_normalised_to_none() {
+        let resp = parse_markets(r#"{"markets":[],"next_cursor":""}"#);
         assert_eq!(resp.next_cursor(), None);
+        assert!(resp.next_cursor.is_none(), "empty string must be None after parse");
     }
 
     #[test]
-    fn test_keyset_markets_response_nb_results() {
-        let resp = KeysetMarketsResponse {
-            data: vec![],
-            next_cursor: None,
-            limit: Some(100),
-            count: Some(0),
-        };
-        assert_eq!(resp.nb_results(), 0);
+    fn test_markets_cursor_absent_defaults_to_none() {
+        let resp = parse_markets(r#"{"markets":[]}"#);
+        assert!(resp.next_cursor.is_none());
     }
 
     #[test]
-    fn test_keyset_events_response_next_cursor_some() {
-        let resp = KeysetEventsResponse {
-            data: vec![],
-            next_cursor: Some("event_cursor".to_string()),
-            limit: Some(100),
-            count: Some(0),
-        };
+    fn test_events_cursor_present() {
+        let resp = parse_events(r#"{"events":[],"next_cursor":"event_cursor"}"#);
         assert_eq!(resp.next_cursor(), Some("event_cursor"));
     }
 
     #[test]
-    fn test_keyset_events_response_next_cursor_none() {
-        let resp = KeysetEventsResponse {
-            data: vec![],
-            next_cursor: None,
-            limit: Some(100),
-            count: Some(0),
-        };
+    fn test_events_cursor_empty_string_normalised_to_none() {
+        let resp = parse_events(r#"{"events":[],"next_cursor":""}"#);
         assert_eq!(resp.next_cursor(), None);
+        assert!(resp.next_cursor.is_none(), "empty string must be None after parse");
     }
 
     #[test]
-    fn test_keyset_events_response_next_cursor_empty_string() {
-        let resp = KeysetEventsResponse {
-            data: vec![],
-            next_cursor: Some("".to_string()),
-            limit: Some(100),
-            count: Some(0),
-        };
-        assert_eq!(resp.next_cursor(), None);
+    fn test_events_cursor_absent_defaults_to_none() {
+        let resp = parse_events(r#"{"events":[]}"#);
+        assert!(resp.next_cursor.is_none());
     }
 
 }

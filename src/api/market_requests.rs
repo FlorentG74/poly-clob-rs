@@ -37,7 +37,7 @@
 //!         .execute()
 //!         .await?;
 //!     // … process page.data …
-//!     cursor = page.next_cursor.filter(|s| !s.is_empty());
+//!     cursor = page.next_cursor;
 //!     if cursor.is_none() { break; }
 //! }
 //! # Ok(())
@@ -244,7 +244,7 @@ impl<'a> MarketBySlugRequest<'a> {
 ///         .execute()
 ///         .await?;
 ///     // … process page.data …
-///     cursor = page.next_cursor.filter(|s| !s.is_empty());
+///     cursor = page.next_cursor;
 ///     if cursor.is_none() { break; }
 /// }
 /// # Ok(())

@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use super::ApiResponse;
+use super::{ApiResponse, KeysetApiResponse, api_response::deserialize_cursor};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -135,6 +135,21 @@ pub struct Event {
 // Response type aliases for clarity
 pub type MarketsResponse = Vec<PolyResponseMarket>;
 
+/// Response envelope for the `/markets/keyset` cursor-based pagination endpoint.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct KeysetMarketsResponse {
+    /// Markets returned in this page (JSON key: `"markets"`).
+    #[serde(rename = "markets")]
+    pub data: Vec<PolyResponseMarket>,
+    /// Cursor for the next page. `None` when no more pages exist (empty string normalised at parse time).
+    #[serde(default, deserialize_with = "deserialize_cursor")]
+    pub next_cursor: Option<String>,
+    /// Page size limit used for this request.
+    pub limit: Option<i32>,
+    /// Number of items in this page (may differ from `limit` on the last page).
+    pub count: Option<i32>,
+}
+
 // ApiResponse implementations
 impl ApiResponse for PolyResponseMarket {
     fn nb_results(&self) -> usize {
@@ -145,5 +160,11 @@ impl ApiResponse for PolyResponseMarket {
 impl ApiResponse for MarketsResponse {
     fn nb_results(&self) -> usize {
         self.len()
+    }
+}
+
+impl KeysetApiResponse for KeysetMarketsResponse {
+    fn next_cursor(&self) -> Option<&str> {
+        self.next_cursor.as_deref()
     }
 }

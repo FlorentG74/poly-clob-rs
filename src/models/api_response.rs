@@ -9,3 +9,27 @@ pub trait ApiResponse {
     /// Used for pagination logic to determine if there are more pages to fetch
     fn nb_results(&self) -> usize;
 }
+
+/// Trait for types that represent keyset-paginated API responses.
+///
+/// Keyset (cursor-based) pagination returns a `next_cursor` token instead of an
+/// offset. Pass the cursor back on the next request. When it is `None` there are
+/// no more pages. Implementors guarantee that empty-string cursors from the API
+/// are already normalised to `None` (via [`deserialize_cursor`] on the field).
+pub trait KeysetApiResponse {
+    /// Returns the cursor for the next page, or `None` when no more pages exist.
+    fn next_cursor(&self) -> Option<&str>;
+}
+
+/// Serde helper: deserialise an `Option<String>` field and coerce `""` to `None`.
+///
+/// Apply with `#[serde(default, deserialize_with = "deserialize_cursor")]` on
+/// keyset `next_cursor` fields so callers never observe an empty-string cursor.
+pub fn deserialize_cursor<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    let opt = Option::<String>::deserialize(deserializer)?;
+    Ok(opt.filter(|s| !s.is_empty()))
+}

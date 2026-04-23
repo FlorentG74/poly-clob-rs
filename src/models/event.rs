@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{ApiResponse, PolyResponseMarket};
+use super::{ApiResponse, KeysetApiResponse, PolyResponseMarket, api_response::deserialize_cursor};
 
 pub type EventResponse = Vec<PolyResponseEvent>;
 
@@ -72,6 +72,21 @@ pub struct Series {
     pub comment_count: i64,
 }
 
+/// Response envelope for the `/events/keyset` cursor-based pagination endpoint.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct KeysetEventsResponse {
+    /// Events returned in this page (JSON key: `"events"`).
+    #[serde(rename = "events")]
+    pub data: Vec<PolyResponseEvent>,
+    /// Cursor for the next page. `None` when no more pages exist (empty string normalised at parse time).
+    #[serde(default, deserialize_with = "deserialize_cursor")]
+    pub next_cursor: Option<String>,
+    /// Page size limit used for this request.
+    pub limit: Option<i32>,
+    /// Number of items in this page (may differ from `limit` on the last page).
+    pub count: Option<i32>,
+}
+
 // ApiResponse implementations
 impl ApiResponse for EventResponse {
     fn nb_results(&self) -> usize {
@@ -82,5 +97,11 @@ impl ApiResponse for EventResponse {
 impl ApiResponse for PolyResponseEvent {
     fn nb_results(&self) -> usize {
         0 // Single event response
+    }
+}
+
+impl KeysetApiResponse for KeysetEventsResponse {
+    fn next_cursor(&self) -> Option<&str> {
+        self.next_cursor.as_deref()
     }
 }

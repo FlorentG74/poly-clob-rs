@@ -300,7 +300,7 @@ impl WebserviceRequest {
     ///         &client, &request, cursor.as_deref(),
     ///     ).await?;
     ///     println!("Got {} markets", page.data.len());
-    ///     cursor = page.next_cursor.clone().filter(|s| !s.is_empty());
+    ///     cursor = page.next_cursor.clone();
     ///     if cursor.is_none() { break; }
     /// }
     /// # Ok(())
@@ -356,11 +356,7 @@ impl WebserviceRequest {
             })
         })?;
 
-        log::debug!(
-            "Keyset page: {} results, next_cursor={:?}",
-            ws_response.nb_results(),
-            ws_response.next_cursor()
-        );
+        log::debug!("Keyset page: next_cursor={:?}", ws_response.next_cursor());
 
         Ok(ws_response)
     }
