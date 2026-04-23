@@ -7,39 +7,35 @@
 //! cargo run --example fetch_events
 //! ```
 
-use poly_clob_rs::{ApiResponse, EventResponse, WebserviceRequest};
+use poly_clob_rs::{models::KeysetEventsResponse, WebserviceRequest};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Fetching events from Polymarket...\n");
 
-    // You would typically get a specific event by ID
-    // For demonstration, we'll show how to construct the request
-
     // Example: Fetch a specific event by ID (replace with actual event ID)
-    let event_id = "21742"; // Example event ID
+    let event_id = "21742";
 
     let request = WebserviceRequest::new_event_by_id_request(event_id);
-    let url = request.get_callable_url(0);
+    let url = request.get_keyset_url(None);
 
     println!("Request URL: {}\n", url);
 
     let client = reqwest::Client::new();
     let response = client.get(&url).send().await?;
 
-    // Check if request was successful
     if !response.status().is_success() {
         println!("Error: {}", response.status());
         println!("Note: Replace the event_id with a valid Polymarket event ID");
         return Ok(());
     }
 
-    let events: EventResponse = response.json().await?;
-    let count = events.nb_results();
+    let page: KeysetEventsResponse = response.json().await?;
+    let count = page.data.len();
 
     println!("Found {} event(s):\n", count);
 
-    for (i, event) in events.iter().enumerate() {
+    for (i, event) in page.data.iter().enumerate() {
         println!("{}. {}", i + 1, event.title);
         println!("   Ticker: {}", event.ticker);
         println!("   Slug: {}", event.slug);
