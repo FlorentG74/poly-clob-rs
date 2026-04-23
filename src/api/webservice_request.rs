@@ -296,11 +296,11 @@ impl WebserviceRequest {
     ///
     /// let mut cursor: Option<String> = None;
     /// loop {
-    ///     let (next, page) = WebserviceRequest::fetch_keyset::<KeysetMarketsResponse>(
+    ///     let page = WebserviceRequest::fetch_keyset::<KeysetMarketsResponse>(
     ///         &client, &request, cursor.as_deref(),
     ///     ).await?;
     ///     println!("Got {} markets", page.data.len());
-    ///     cursor = next;
+    ///     cursor = page.next_cursor.clone().filter(|s| !s.is_empty());
     ///     if cursor.is_none() { break; }
     /// }
     /// # Ok(())
@@ -310,7 +310,7 @@ impl WebserviceRequest {
         client: &Client,
         web_service_request: &WebserviceRequest,
         cursor: Option<&str>,
-    ) -> crate::Result<(Option<String>, T)>
+    ) -> crate::Result<T>
     where
         T: for<'a> serde::Deserialize<'a> + KeysetApiResponse,
     {
@@ -362,8 +362,7 @@ impl WebserviceRequest {
             ws_response.next_cursor()
         );
 
-        let next_cursor = ws_response.next_cursor().map(|s| s.to_owned());
-        Ok((next_cursor, ws_response))
+        Ok(ws_response)
     }
 
     pub fn add_param_to_url(url: &mut String, name: &str, value: &str) {
@@ -376,5 +375,79 @@ impl WebserviceRequest {
         } else {
             url.push_str(format!("&{}={}", name, value).as_str());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use reqwest::Method;
+
+    fn keyset_req(url: &str, args: Vec<(String, String)>) -> WebserviceRequest {
+        WebserviceRequest {
+            api: "https://gamma-api.polymarket.com".to_string(),
+            url: url.to_string(),
+            method: Method::GET,
+            with_pagination: false,
+            args,
+            body: None,
+        }
+    }
+
+    #[test]
+    fn test_get_keyset_url_no_cursor() {
+        let url = keyset_req("/markets/keyset", vec![]).get_keyset_url(None);
+        assert_eq!(url, "https://gamma-api.polymarket.com/markets/keyset?limit=100");
+    }
+
+    #[test]
+    fn test_get_keyset_url_with_cursor() {
+        let url = keyset_req("/markets/keyset", vec![]).get_keyset_url(Some("cursor_abc"));
+        assert!(url.contains("after_cursor=cursor_abc"), "url={}", url);
+        assert!(url.contains("limit=100"), "url={}", url);
+    }
+
+    #[test]
+    fn test_get_keyset_url_empty_cursor_skipped() {
+        let url = keyset_req("/markets/keyset", vec![]).get_keyset_url(Some(""));
+        assert!(!url.contains("after_cursor"), "empty cursor should not appear: {}", url);
+    }
+
+    #[test]
+    fn test_get_keyset_url_with_extra_args() {
+        let url = keyset_req(
+            "/markets/keyset",
+            vec![("closed".to_string(), "false".to_string())],
+        )
+        .get_keyset_url(None);
+        assert!(url.contains("closed=false"), "url={}", url);
+        assert!(url.contains("limit=100"), "url={}", url);
+    }
+
+    #[test]
+    fn test_get_keyset_url_with_filters_and_cursor() {
+        let url = keyset_req(
+            "/events/keyset",
+            vec![
+                ("closed".to_string(), "false".to_string()),
+                ("active".to_string(), "true".to_string()),
+            ],
+        )
+        .get_keyset_url(Some("cur123"));
+        assert!(url.contains("after_cursor=cur123"), "url={}", url);
+        assert!(url.contains("closed=false"), "url={}", url);
+        assert!(url.contains("active=true"), "url={}", url);
+    }
+
+    #[test]
+    fn test_get_keyset_url_no_duplicate_limit_when_limit_in_args() {
+        let url = keyset_req(
+            "/markets/keyset",
+            vec![("limit".to_string(), "50".to_string())],
+        )
+        .get_keyset_url(None);
+        let count = url.matches("limit=").count();
+        assert_eq!(count, 1, "limit should appear exactly once: {}", url);
+        assert!(url.contains("limit=50"), "url={}", url);
     }
 }

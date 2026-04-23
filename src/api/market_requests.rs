@@ -1,8 +1,7 @@
 //! Market request builders for the Polymarket Gamma API.
 //!
 //! This module provides builders for fetching market data from the Polymarket Gamma API.
-//! It supports fetching individual markets by slug or listing/filtering multiple markets
-//! with comprehensive filtering and sorting options.
+//! [`MarketsRequest`] uses the cursor-based `/markets/keyset` endpoint.
 //!
 //! # Examples
 //!
@@ -27,13 +26,20 @@
 //! use poly_clob_rs::api::market_requests::MarketsRequest;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let markets = MarketsRequest::builder()
-//!     .closed(Some(false))
-//!     .volume_num_min(Some(1000.0))
-//!     .limit(50)
-//!     .build()
-//!     .execute()
-//!     .await?;
+//! let mut cursor: Option<String> = None;
+//! loop {
+//!     let page = MarketsRequest::builder()
+//!         .closed(Some(false))
+//!         .volume_num_min(Some(1000.0))
+//!         .limit(50)
+//!         .cursor(cursor.clone())
+//!         .build()
+//!         .execute()
+//!         .await?;
+//!     // … process page.data …
+//!     cursor = page.next_cursor.filter(|s| !s.is_empty());
+//!     if cursor.is_none() { break; }
+//! }
 //! # Ok(())
 //! # }
 //! ```
@@ -44,7 +50,7 @@
 //! use poly_clob_rs::api::market_requests::MarketsRequest;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let markets = MarketsRequest::builder()
+//! let page = MarketsRequest::builder()
 //!     .condition_ids(vec!["0x123", "0x456"])
 //!     .build()
 //!     .execute()
@@ -60,9 +66,10 @@ use reqwest::Method;
 use typed_builder::TypedBuilder;
 
 use crate::api::http_client::get_http_client;
-use crate::{MarketsResponse, PolyResponseMarket};
+use crate::PolyResponseMarket;
+use crate::models::KeysetMarketsResponse;
 
-use super::{GAMMA_API, GET_MARKETS, WITH_SLUG};
+use super::{GAMMA_API, GET_MARKETS, GET_MARKETS_KEYSET, WITH_SLUG};
 
 // ============================================================================
 // Enums
@@ -213,56 +220,14 @@ impl<'a> MarketBySlugRequest<'a> {
 }
 
 // ============================================================================
-// MarketsRequest - for listing and filtering markets
+// MarketsRequest - cursor-based pagination for /markets/keyset
 // ============================================================================
 
 /// Request builder for listing and filtering markets from the Polymarket Gamma API.
 ///
-/// This builder provides comprehensive filtering, pagination, and sorting options for querying
-/// the Polymarket markets. All fields are optional with sensible defaults.
-///
-/// # Optional Fields (with defaults)
-///
-/// ## Pagination
-/// * `limit` - Maximum number of markets to return (default: 100)
-/// * `offset` - Pagination offset (default: 0)
-///
-/// ## Sorting
-/// * `order` - Comma-separated list of fields to order by (e.g., "volume,liquidity")
-/// * `ascending` - Sort in ascending order (default: false/descending)
-///
-/// ## ID Filters
-/// * `id` - Filter by market IDs (can specify multiple)
-/// * `slug` - Filter by market slugs (query parameter, different from MarketBySlugRequest)
-/// * `clob_token_ids` - Filter by CLOB token IDs (can specify multiple)
-/// * `condition_ids` - Filter by condition IDs (can specify multiple)
-/// * `market_maker_address` - Filter by market maker addresses (can specify multiple)
-/// * `question_ids` - Filter by question IDs (can specify multiple)
-///
-/// ## Numeric Range Filters
-/// * `liquidity_num_min` - Minimum liquidity
-/// * `liquidity_num_max` - Maximum liquidity
-/// * `volume_num_min` - Minimum volume
-/// * `volume_num_max` - Maximum volume
-/// * `rewards_min_size` - Minimum rewards size
-///
-/// ## Date Filters
-/// * `start_date_min` - Minimum event start date (ISO 8601 format)
-/// * `start_date_max` - Maximum event start date (ISO 8601 format)
-/// * `end_date_min` - Minimum event end date (ISO 8601 format)
-/// * `end_date_max` - Maximum event end date (ISO 8601 format)
-///
-/// ## Boolean Filters
-/// * `closed` - Filter by closed status
-/// * `related_tags` - Include related tags
-/// * `cyom` - Filter CYOM (Create Your Own Market) markets
-/// * `include_tag` - Include tag information in response
-///
-/// ## Category/Type Filters
-/// * `tag_id` - Filter by tag ID
-/// * `uma_resolution_status` - Filter by UMA resolution status
-/// * `game_id` - Filter by game ID
-/// * `sports_market_types` - Filter by sports market types (can specify multiple)
+/// Uses the `/markets/keyset` cursor-based pagination endpoint.
+/// Leave `cursor` as `None` for the first page; pass the `next_cursor` from the
+/// previous [`KeysetMarketsResponse`] for subsequent pages.
 ///
 /// # Example
 ///
@@ -270,27 +235,30 @@ impl<'a> MarketBySlugRequest<'a> {
 /// use poly_clob_rs::api::market_requests::MarketsRequest;
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let request = MarketsRequest::builder()
-///     .limit(50)
-///     .closed(Some(false))
-///     .volume_num_min(Some(1000.0))
-///     .order("volume")
-///     .ascending(false)
-///     .build();
-///
-/// let markets = request.execute().await?;
+/// let mut cursor: Option<String> = None;
+/// loop {
+///     let page = MarketsRequest::builder()
+///         .closed(Some(false))
+///         .cursor(cursor.clone())
+///         .build()
+///         .execute()
+///         .await?;
+///     // … process page.data …
+///     cursor = page.next_cursor.filter(|s| !s.is_empty());
+///     if cursor.is_none() { break; }
+/// }
 /// # Ok(())
 /// # }
 /// ```
 #[derive(TypedBuilder)]
 pub struct MarketsRequest<'a> {
     // Pagination
-    /// Maximum number of markets to return
+    /// Maximum number of markets per page
     #[builder(default = 100)]
     pub limit: i32,
-    /// Pagination offset
-    #[builder(default = 0)]
-    pub offset: i32,
+    /// Cursor from the previous response. `None` fetches the first page.
+    #[builder(default)]
+    pub cursor: Option<String>,
 
     // Sorting
     /// Comma-separated list of fields to order by (e.g., "volume,liquidity")
@@ -381,36 +349,25 @@ pub struct MarketsRequest<'a> {
 }
 
 impl<'a> MarketsRequest<'a> {
-    /// Executes the markets request.
+    /// Executes a single page fetch against `/markets/keyset`.
     ///
-    /// # Returns
-    ///
-    /// Returns `Ok(Vec<PolyResponseMarket>)` with the markets on success, or an error on failure.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// * The HTTP request fails
-    /// * The API returns an error response
-    /// * The response cannot be deserialized
-    pub async fn execute(&self) -> Result<MarketsResponse> {
+    /// Returns a [`KeysetMarketsResponse`] whose `next_cursor` field indicates
+    /// whether more pages exist. Pass it back via [`MarketsRequest::cursor`] to
+    /// fetch the next page.
+    pub async fn execute(&self) -> Result<KeysetMarketsResponse> {
         let client = get_http_client(None);
 
         let mut web_service_request = super::webservice_request::WebserviceRequest {
             api: GAMMA_API.to_string(),
-            url: GET_MARKETS.to_string(),
+            url: GET_MARKETS_KEYSET.to_string(),
             method: Method::GET,
-            with_pagination: true,
+            with_pagination: false,
             args: Vec::new(),
             body: None,
         };
 
-        // Pagination
         if self.limit != 100 {
             web_service_request.add_arg("limit".to_string(), self.limit.to_string());
-        }
-        if self.offset != 0 {
-            web_service_request.add_arg("offset".to_string(), self.offset.to_string());
         }
 
         // Sorting
@@ -421,7 +378,7 @@ impl<'a> MarketsRequest<'a> {
             web_service_request.add_arg("ascending".to_string(), "true".to_string());
         }
 
-        // ID Filters - add each value separately
+        // ID Filters
         for id in &self.id {
             web_service_request.add_arg("id".to_string(), id.to_string());
         }
@@ -509,15 +466,15 @@ impl<'a> MarketsRequest<'a> {
             );
         }
 
-        let (_, markets) =
-            super::webservice_request::WebserviceRequest::fetch_batch::<MarketsResponse>(
+        let page =
+            super::webservice_request::WebserviceRequest::fetch_keyset::<KeysetMarketsResponse>(
                 client,
                 &web_service_request,
-                self.offset,
+                self.cursor.as_deref(),
             )
             .await?;
 
-        Ok(markets)
+        Ok(page)
     }
 }
 
@@ -564,7 +521,7 @@ pub async fn map_multiple_market_by_condition_ids_ws(
         .execute()
         .await?;
 
-    for m in markets.into_iter() {
+    for m in markets.data.into_iter() {
         if let Some(condition_id) = m.condition_id.clone() {
             markets_map.insert(condition_id, m);
         }
@@ -620,7 +577,7 @@ mod tests {
         let request = MarketsRequest::builder().build();
 
         assert_eq!(request.limit, 100);
-        assert_eq!(request.offset, 0);
+        assert!(request.cursor.is_none());
         assert_eq!(request.ascending, false);
         assert!(request.id.is_empty());
         assert!(request.slug.is_empty());
@@ -648,10 +605,22 @@ mod tests {
     }
 
     #[test]
+    fn test_markets_request_with_cursor() {
+        let request = MarketsRequest::builder()
+            .cursor(Some("abc123".to_string()))
+            .limit(50)
+            .closed(Some(false))
+            .build();
+
+        assert_eq!(request.cursor, Some("abc123".to_string()));
+        assert_eq!(request.limit, 50);
+        assert_eq!(request.closed, Some(false));
+    }
+
+    #[test]
     fn test_markets_request_with_filters() {
         let request = MarketsRequest::builder()
             .limit(50)
-            .offset(10)
             .closed(Some(false))
             .volume_num_min(Some(1000.0))
             .volume_num_max(Some(5000.0))
@@ -660,7 +629,6 @@ mod tests {
             .build();
 
         assert_eq!(request.limit, 50);
-        assert_eq!(request.offset, 10);
         assert_eq!(request.closed, Some(false));
         assert_eq!(request.volume_num_min, Some(1000.0));
         assert_eq!(request.volume_num_max, Some(5000.0));
@@ -688,4 +656,5 @@ mod tests {
         assert_eq!(request.ascending, true);
         assert_eq!(request.slug.len(), 2);
     }
+
 }
