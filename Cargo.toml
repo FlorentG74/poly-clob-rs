@@ -31,6 +31,7 @@ hmac = "0.12.1"
 base64 = { version = "0.22.1" }
 strum_macros = "0.27.2"
 typed-builder = "0.23"
+rand = "0.8"
 diesel = { version = "2.3.5", features = ["postgres"], optional = true }
 
 [dev-dependencies]

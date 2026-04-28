@@ -7,11 +7,11 @@ use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
 use typed_builder::TypedBuilder;
 
-use crate::api::auth::{build_l2_headers, get_timestamp, get_zero_address};
+use crate::api::auth::{build_l2_headers, get_timestamp};
 use crate::api::response_handler::handle_api_response;
 use crate::http_client::get_http_client;
 use crate::models::{Account, Order, OrderType, Side};
-use crate::{market_requests, MarketOrders, OpenOrder, WebserviceRequest, ORDERS, fee_requests};
+use crate::{market_requests, MarketOrders, OpenOrder, WebserviceRequest, ORDERS};
 use reqwest::header::*;
 
 use super::clob_endpoints::{CLOB_API, CANCEL, GET_ORDER, POST_ORDER};
@@ -111,9 +111,6 @@ pub struct LimitOrderRequest<'a> {
     /// Order expiration timestamp (required for GTD, must be 0 for others)
     #[builder(default = 0)]
     pub expiration: i64,
-    /// Whether to fetch the fee rate from the API (default: false)
-    #[builder(default = false)]
-    pub with_fee: bool,
 }
 
 impl<'a> LimitOrderRequest<'a> {
@@ -178,27 +175,13 @@ impl<'a> LimitOrderRequest<'a> {
             (maker_amount, taker_amount)
         };
 
-        let fee_rate_bps = if self.with_fee {
-            match fee_requests::get_fee_rate(self.token_id).await {
-                Ok(rate) => rate.base_fee,
-                Err(e) => {
-                    log::error!("Failed to fetch fee rate; using 0 as default: {}", e);
-                    0
-                },
-            }
-        } else {
-            0
-        };
-
         let order = Order::builder()
             .maker(&self.signer.poly_address)
             .signer(&self.signer.pub_key)
-            .taker(get_zero_address())
             .token_id(self.token_id)
             .maker_amount(maker_amount)
             .taker_amount(taker_amount)
             .expiration(self.expiration)
-            .fee_rate_bps(fee_rate_bps)
             .side(self.side)
             .neg_risk(self.neg_risk)
             .order_type(self.order_type)
@@ -226,7 +209,7 @@ impl<'a> LimitOrderRequest<'a> {
     /// * The API returns an error response
     pub async fn execute(&self) -> Result<String> {
         // Build and validate order
-        let order = self.build().await?;
+        let mut order = self.build().await?;
 
         let method = "POST";
         let request_path = POST_ORDER;
@@ -235,16 +218,17 @@ impl<'a> LimitOrderRequest<'a> {
 
         let client = get_http_client(Some(request_path));
 
-        let salt = get_timestamp();
-        let nonce = 0; // Nonce for order signing
+        let l2_timestamp = get_timestamp();
+        let now_ms = chrono::Utc::now().timestamp_millis() as u64;
+        order.timestamp = now_ms;
+        let order_salt = ((rand::random::<f64>() * now_ms as f64) as u64).to_string();
         let body = order.build_order_query_body(
-            salt.as_str(),
-            nonce,
+            order_salt.as_str(),
             self.signer.api_key.as_str(),
             self.signer.private_key.as_str(),
         )?;
 
-        let l2_headers = build_l2_headers(self.signer, method, request_path, &body, &salt)?;
+        let l2_headers = build_l2_headers(self.signer, method, request_path, &body, &l2_timestamp)?;
 
         log::debug!("Signed Order body: {}", &body);
 
