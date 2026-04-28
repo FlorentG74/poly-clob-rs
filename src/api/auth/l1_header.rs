@@ -2,7 +2,7 @@ use crate::api::auth::EIP712Struct;
 use crate::api::error::{AuthError, Result};
 
 use alloy::{
-    dyn_abi::{DynSolType, DynSolValue},
+    dyn_abi::DynSolValue,
     primitives::{keccak256, Address, B256, U256},
 };
 
@@ -39,12 +39,6 @@ impl EIP712Struct for L1Header {
     }
 
     fn get_domain_values(&self) -> DynSolValue {
-        let _domain_type = DynSolType::Tuple(vec![
-            DynSolType::String,
-            DynSolType::String,
-            DynSolType::Uint(256),
-        ]);
-
         DynSolValue::Tuple(vec![
             DynSolValue::String(NAME.to_string()),
             DynSolValue::String(VERSION.to_string()),
@@ -56,14 +50,7 @@ impl EIP712Struct for L1Header {
         keccak256("Order(address address,string timestamp,uint256 nonce,string message)")
     }
 
-    fn get_message_values(&self, salt: &str, _nonce: i32) -> Result<DynSolValue> {
-        let _message_type = DynSolType::Tuple(vec![
-            DynSolType::Address,
-            DynSolType::String,
-            DynSolType::Uint(256),
-            DynSolType::String,
-        ]);
-
+    fn get_message_values(&self, salt: &str) -> Result<DynSolValue> {
         let signer = self.get_signer();
         let address = Address::from_str(signer).map_err(|e| AuthError::InvalidAddress {
             address: format!("{}: {}", signer, e),

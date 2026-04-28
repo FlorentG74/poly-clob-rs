@@ -73,6 +73,12 @@ fn generate_values_hash(value: &DynSolValue) -> Result<Vec<u8>> {
                 log::trace!("Result: {:?}", encoded_address);
                 encoded_values.extend_from_slice(&encoded_address);
             }
+            "bytes32" => {
+                let (bytes, _size) = val.as_fixed_bytes().ok_or_else(|| AuthError::SignatureFailed {
+                    message: "expected bytes32 value".to_string(),
+                })?;
+                encoded_values.extend_from_slice(bytes);
+            }
             other => {
                 return Err(AuthError::SignatureFailed {
                     message: format!("unknown EIP712 type: {}", other),
@@ -98,12 +104,11 @@ fn get_encoded_domain(eip712_struct: &dyn EIP712Struct) -> Result<B256> {
 pub fn build_l1_signature(
     eip712_struct: &dyn EIP712Struct,
     salt: &str,
-    nonce: i32,
     signer_pk: &str,
 ) -> Result<String> {
     let encoded_domain = get_encoded_domain(eip712_struct)?;
 
-    let message_value = eip712_struct.get_message_values(salt, nonce)?;
+    let message_value = eip712_struct.get_message_values(salt)?;
     let eip712_message_type_hash = eip712_struct.get_message_type_hash();
     let encoded_message_values = generate_values_hash(&message_value)?;
 
@@ -234,10 +239,6 @@ pub fn build_hmac_signature(
     URL_SAFE.encode_string(bytes, &mut signature);
 
     Ok(signature)
-}
-
-pub fn get_zero_address() -> String {
-    "0x0000000000000000000000000000000000000000".to_string()
 }
 
 pub fn get_timestamp() -> String {
