@@ -52,6 +52,17 @@ pub static GET_EVENTS_KEYSET: &str = "/events/keyset";
 
 pub static GET_PRICES_HISTORY: &str = "/prices-history";
 
+// V2 endpoints
+pub static VERSION: &str = "/version";
+pub static GET_MARKET_BY_TOKEN: &str = "/markets-by-token/";
+pub static GET_CLOB_MARKET: &str = "/clob-markets/";
+pub static PRE_MIGRATION_ORDERS: &str = "/data/pre-migration-orders";
+pub static POST_HEARTBEAT: &str = "/v1/heartbeats";
+pub static GET_BUILDER_TRADES: &str = "/builder/trades";
+pub static GET_BUILDER_FEE_RATE: &str = "/fees/builder-fees/";
+pub static CLOSED_ONLY: &str = "/auth/ban-status/closed-only";
+pub static CREATE_BUILDER_API_KEY: &str = "/auth/builder-api-key";
+
 // Polymarket Website API (for crypto strike/settlement prices)
 pub static POLYMARKET_API: &str = "https://polymarket.com/api";
 pub static GET_CRYPTO_PRICE: &str = "/crypto/crypto-price";
