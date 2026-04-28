@@ -6,23 +6,24 @@ use serde::Serialize;
 use typed_builder::TypedBuilder;
 
 use alloy::{
-    dyn_abi::{DynSolType, DynSolValue},
-    primitives::{address, keccak256, Address, B256, U256},
+    dyn_abi::DynSolValue,
+    primitives::{address, keccak256, Address, B256, FixedBytes, U256},
 };
+use chrono::Utc;
 
 use std::str::FromStr;
 
 const NAME: &str = "Polymarket CTF Exchange";
-const VERSION: &str = "1";
+const VERSION: &str = "2";
 use crate::constants::{POLYGON_CHAIN_ID, RAW_UNIT_MULTIPLIER};
 
 const CHAIN_ID: i32 = POLYGON_CHAIN_ID as i32;
 
-// Non-Neg Risk markets
+// V2 Non-Neg Risk markets
 const NON_NEG_RISK_VERIFYING_CONTRACT: Address =
-    address!("4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E");
-// Neg Risk markets
-const NEG_RISK_VERIFYING_CONTRACT: Address = address!("C5d563A36AE78145C45a50134d48A1215220f80a");
+    address!("E111180000d2663C0091e4f400237545B87B996B");
+// V2 Neg Risk markets
+const NEG_RISK_VERIFYING_CONTRACT: Address = address!("e2222d279d744050d28e00520010520000310F59");
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,21 +41,20 @@ struct SignedOrderRequest<'a> {
     salt: &'a str,
     maker: &'a str,
     signer: &'a str,
-    taker: &'a str,
     #[serde(rename = "tokenId")]
     token_id: &'a str,
     #[serde(serialize_with = "serialize_i32_as_string")]
     maker_amount: i32,
     #[serde(serialize_with = "serialize_i32_as_string")]
     taker_amount: i32,
-    #[serde(serialize_with = "serialize_i64_as_string")]
-    expiration: i64,
-    #[serde(serialize_with = "serialize_i32_as_string")]
-    nonce: i32,
-    #[serde(rename = "feeRateBps", serialize_with = "serialize_i32_as_string")]
-    fee_rate_bps: i32,
     side: String,
     signature_type: i32,
+    #[serde(serialize_with = "serialize_u64_as_string")]
+    timestamp: u64,
+    metadata: String,
+    builder: String,
+    #[serde(serialize_with = "serialize_i64_as_string")]
+    expiration: i64,
     signature: String,
 }
 
@@ -83,36 +83,45 @@ where
     serializer.serialize_str(&value.to_string())
 }
 
+fn serialize_u64_as_string<S>(value: &u64, serializer: S) -> std::result::Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(&value.to_string())
+}
+
 #[derive(TypedBuilder)]
 #[builder(field_defaults(setter(into)))]
 pub struct Order {
     pub maker: String,
     pub signer: String,
-    pub taker: String,
     pub token_id: String,
     pub maker_amount: i32,
     pub taker_amount: i32,
     #[builder(default = 0)]
     pub expiration: i64,
-    #[builder(default = 0)]
-    pub fee_rate_bps: i32,
     pub side: Side,
     #[builder(default = false)]
     pub neg_risk: bool,
     #[builder(default = 1)]
     pub signature_type: i32,
     pub order_type: OrderType,
+    #[builder(default = Utc::now().timestamp_millis() as u64)]
+    pub timestamp: u64,
+    #[builder(default = [0u8; 32])]
+    pub metadata: [u8; 32],
+    #[builder(default = [0u8; 32])]
+    pub builder_bytes: [u8; 32],
 }
 
 impl Order {
     pub fn build_order_query_body(
         &self,
         salt: &str,
-        nonce: i32,
         api_key: &str,
         pk: &str,
     ) -> Result<String> {
-        let signature = build_l1_signature(self, salt, nonce, pk)?;
+        let signature = build_l1_signature(self, salt, pk)?;
 
         log::debug!("Signature added to msg: {}", signature);
 
@@ -120,15 +129,15 @@ impl Order {
             salt,
             maker: &self.maker,
             signer: &self.signer,
-            taker: &self.taker,
             token_id: &self.token_id,
             maker_amount: self.maker_amount,
             taker_amount: self.taker_amount,
-            expiration: self.expiration,
-            nonce,
-            fee_rate_bps: self.fee_rate_bps,
             side: self.side.to_string(),
             signature_type: self.signature_type,
+            timestamp: self.timestamp,
+            metadata: format!("0x{}", alloy::hex::encode(self.metadata)),
+            builder: format!("0x{}", alloy::hex::encode(self.builder_bytes)),
+            expiration: self.expiration,
             signature,
         };
 
@@ -179,14 +188,6 @@ impl EIP712Struct for Order {
             NON_NEG_RISK_VERIFYING_CONTRACT
         };
 
-        // EIP-712 domain
-        let _domain_type = DynSolType::Tuple(vec![
-            DynSolType::String,    // name
-            DynSolType::String,    // version
-            DynSolType::Uint(256), // chainId
-            DynSolType::Address,   // verifyingContract
-        ]);
-
         DynSolValue::Tuple(vec![
             DynSolValue::String(NAME.to_string()),
             DynSolValue::String(VERSION.to_string()),
@@ -196,26 +197,39 @@ impl EIP712Struct for Order {
     }
 
     fn get_message_type_hash(&self) -> B256 {
-        keccak256("Order(uint256 salt,address maker,address signer,address taker,uint256 tokenId,uint256 makerAmount,uint256 takerAmount,uint256 expiration,uint256 nonce,uint256 feeRateBps,uint8 side,uint8 signatureType)")
+        keccak256("Order(uint256 salt,address maker,address signer,uint256 tokenId,uint256 makerAmount,uint256 takerAmount,uint8 side,uint8 signatureType,uint256 timestamp,bytes32 metadata,bytes32 builder)")
     }
 
-    fn get_message_values(&self, salt: &str, nonce: i32) -> Result<DynSolValue> {
-        // Message type (Order structure)
-        let _message_type = DynSolType::Tuple(vec![
-            DynSolType::Uint(256),
-            DynSolType::Address,
-            DynSolType::Address,
-            DynSolType::Address,
-            DynSolType::Uint(256),
-            DynSolType::Uint(256),
-            DynSolType::Uint(256),
-            DynSolType::Uint(256),
-            DynSolType::Uint(256),
-            DynSolType::Uint(256),
-            DynSolType::Uint(8),
-            DynSolType::Uint(8),
-        ]);
-
+    /// Returns the EIP-712 message values for the V2 Order struct.
+    ///
+    /// Field order matches the V2 type string exactly (order is significant for hashing):
+    /// `Order(uint256 salt, address maker, address signer, uint256 tokenId,
+    /// uint256 makerAmount, uint256 takerAmount, uint8 side, uint8 signatureType,
+    /// uint256 timestamp, bytes32 metadata, bytes32 builder)`
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use poly_clob_rs::{Order, Side, OrderType, EIP712Struct};
+    ///
+    /// let order = Order::builder()
+    ///     .maker("0x1234567890123456789012345678901234567890")
+    ///     .signer("0x1234567890123456789012345678901234567890")
+    ///     .token_id("12345")
+    ///     .maker_amount(100)
+    ///     .taker_amount(50)
+    ///     .side(Side::Buy)
+    ///     .order_type(OrderType::GTC)
+    ///     .timestamp(1712700000000u64)
+    ///     .build();
+    ///
+    /// let values = order.get_message_values("123456789").unwrap();
+    /// let fields = values.as_tuple().unwrap();
+    /// // 11 fields: salt maker signer tokenId makerAmount takerAmount
+    /// //            side signatureType timestamp metadata builder
+    /// assert_eq!(fields.len(), 11);
+    /// ```
+    fn get_message_values(&self, salt: &str) -> Result<DynSolValue> {
         let salt_u256 = U256::from_str(salt).map_err(|e| SerializationError::FieldParse {
             field: "salt".to_string(),
             message: format!("invalid salt: {}: {}", salt, e),
@@ -230,31 +244,24 @@ impl EIP712Struct for Order {
                 field: "signer".to_string(),
                 message: format!("invalid signer address: {}: {}", self.signer, e),
             })?;
-        let taker_addr =
-            Address::from_str(&self.taker).map_err(|e| SerializationError::FieldParse {
-                field: "taker".to_string(),
-                message: format!("invalid taker address: {}: {}", self.taker, e),
-            })?;
         let token_id_u256 =
             U256::from_str(&self.token_id).map_err(|e| SerializationError::FieldParse {
                 field: "token_id".to_string(),
                 message: format!("invalid token_id: {}: {}", self.token_id, e),
             })?;
 
-        // Populate values from object
         Ok(DynSolValue::Tuple(vec![
             DynSolValue::Uint(salt_u256, 256),
             DynSolValue::Address(maker_addr),
             DynSolValue::Address(signer_addr),
-            DynSolValue::Address(taker_addr),
             DynSolValue::Uint(token_id_u256, 256),
             DynSolValue::Uint(U256::from(self.maker_amount), 256),
             DynSolValue::Uint(U256::from(self.taker_amount), 256),
-            DynSolValue::Uint(U256::from(self.expiration), 256),
-            DynSolValue::Uint(U256::from(nonce), 256),
-            DynSolValue::Uint(U256::from(self.fee_rate_bps), 256),
             DynSolValue::Uint(U256::from(self.side.to_int()), 8),
             DynSolValue::Uint(U256::from(self.signature_type), 8),
+            DynSolValue::Uint(U256::from(self.timestamp), 256),
+            DynSolValue::FixedBytes(FixedBytes::from(self.metadata), 32),
+            DynSolValue::FixedBytes(FixedBytes::from(self.builder_bytes), 32),
         ]))
     }
 }
@@ -267,25 +274,21 @@ mod tests {
     const TEST_TOKEN_ID: &str =
         "9791340778034406846471990250402404386251253109836550662455900621767083631393";
     const TEST_MAKER: &str = "0x1234567890123456789012345678901234567890"; // Mock address
-    const TEST_TAKER: &str = "0x0000000000000000000000000000000000000000"; // Zero address
     const TEST_PK: &str = "0x1234567890123456789012345678901234567890123456789012345678901234";
+    const TEST_TIMESTAMP: u64 = 1712700000000u64;
 
     /// Helper macro to create a test order with common fields
     macro_rules! test_order {
         ($side:expr, $order_type:expr) => {
-            test_order!($side, $order_type, 0)
-        };
-        ($side:expr, $order_type:expr, $fee_rate_bps:expr) => {
             Order::builder()
                 .maker(TEST_MAKER)
                 .signer(TEST_MAKER)
-                .taker(TEST_TAKER)
                 .token_id(TEST_TOKEN_ID)
                 .maker_amount(100)
                 .taker_amount(50)
                 .side($side)
                 .order_type($order_type)
-                .fee_rate_bps($fee_rate_bps)
+                .timestamp(TEST_TIMESTAMP)
                 .build()
         };
     }
@@ -295,27 +298,27 @@ mod tests {
         let order = Order::builder()
             .maker(TEST_MAKER)
             .signer(TEST_MAKER)
-            .taker(TEST_TAKER)
             .token_id(TEST_TOKEN_ID)
             .maker_amount(100)
             .taker_amount(50)
             .expiration(9999999999_i64)
-            .fee_rate_bps(10)
             .side(Side::Buy)
             .order_type(OrderType::FOK)
+            .timestamp(TEST_TIMESTAMP)
             .build();
 
         assert_eq!(order.maker, TEST_MAKER);
         assert_eq!(order.signer, TEST_MAKER);
-        assert_eq!(order.taker, TEST_TAKER);
         assert_eq!(order.token_id, TEST_TOKEN_ID);
         assert_eq!(order.maker_amount, 100);
         assert_eq!(order.taker_amount, 50);
         assert_eq!(order.expiration, 9999999999);
-        assert_eq!(order.fee_rate_bps, 10);
         assert_eq!(order.side, Side::Buy);
         assert_eq!(order.signature_type, 1); // default
         assert_eq!(order.order_type, OrderType::FOK);
+        assert_eq!(order.timestamp, TEST_TIMESTAMP);
+        assert_eq!(order.metadata, [0u8; 32]);
+        assert_eq!(order.builder_bytes, [0u8; 32]);
     }
 
     #[test]
@@ -324,9 +327,10 @@ mod tests {
 
         // Verify defaults
         assert_eq!(order.expiration, 0);
-        assert_eq!(order.fee_rate_bps, 0);
         assert!(!order.neg_risk);
         assert_eq!(order.signature_type, 1);
+        assert_eq!(order.metadata, [0u8; 32]);
+        assert_eq!(order.builder_bytes, [0u8; 32]);
     }
 
     #[test]
@@ -356,32 +360,34 @@ mod tests {
 
     #[test]
     fn test_build_order_query_body_structure() {
+        // Known-answer test: fixed inputs must produce a deterministic V2 body.
+        // Regenerate via Python py-clob-client-v2 with the same pk/salt/fields to verify cross-client parity.
+        const EXPECTED: &str = r#"{"order":{"salt":123456789,"maker":"0x1234567890123456789012345678901234567890","signer":"0x1234567890123456789012345678901234567890","tokenId":"9791340778034406846471990250402404386251253109836550662455900621767083631393","makerAmount":"100","takerAmount":"50","side":"BUY","signatureType":1,"timestamp":"1712700000000","metadata":"0x0000000000000000000000000000000000000000000000000000000000000000","builder":"0x0000000000000000000000000000000000000000000000000000000000000000","expiration":"9999999999","signature":"0xd4506d0e92ca2a9c9cef22f00617bb1d277437a4e82963b03dcdfa72fbd503e17279459903a67903647792dfb282453f35fc5e679f3e9abe7aa6feb9bed457971b"},"owner":"test_api_key","orderType":"FOK"}"#;
+
         let order = Order::builder()
             .maker(TEST_MAKER)
             .signer(TEST_MAKER)
-            .taker(TEST_TAKER)
             .token_id(TEST_TOKEN_ID)
             .maker_amount(100)
             .taker_amount(50)
             .expiration(9999999999_i64)
-            .fee_rate_bps(10)
             .side(Side::Buy)
             .order_type(OrderType::FOK)
+            .timestamp(TEST_TIMESTAMP)
             .build();
 
-        let expected_body = r#"{"order":{"salt":123456789,"maker":"0x1234567890123456789012345678901234567890","signer":"0x1234567890123456789012345678901234567890","taker":"0x0000000000000000000000000000000000000000","tokenId":"9791340778034406846471990250402404386251253109836550662455900621767083631393","makerAmount":"100","takerAmount":"50","expiration":"9999999999","nonce":"0","feeRateBps":"10","side":"BUY","signatureType":1,"signature":"0x513f7e9ebe22fc80d12446263dc6c89404932a7668aa7c4d54d2d1074d63ef1c31259122bf8c6490dac0a3c1fb7dfcf3285d6fe1d8179cc0a8384b33288787371b"},"owner":"test_api_key","orderType":"FOK"}"#;
-
         let body = order
-            .build_order_query_body("123456789", 0, "test_api_key", TEST_PK)
+            .build_order_query_body("123456789", "test_api_key", TEST_PK)
             .unwrap();
-        assert!(expected_body.eq(&body));
+
+        assert_eq!(body, EXPECTED);
     }
 
     #[test]
     fn test_build_order_query_body_order_type_fok() {
         let order = test_order!(Side::Buy, OrderType::FOK);
         let body = order
-            .build_order_query_body("123", 0, "key", TEST_PK)
+            .build_order_query_body("123", "key", TEST_PK)
             .unwrap();
         assert!(body.contains("\"orderType\":\"FOK\""));
     }
@@ -390,7 +396,7 @@ mod tests {
     fn test_build_order_query_body_order_type_fak() {
         let order = test_order!(Side::Buy, OrderType::FAK);
         let body = order
-            .build_order_query_body("123", 0, "key", TEST_PK)
+            .build_order_query_body("123", "key", TEST_PK)
             .unwrap();
         assert!(body.contains("\"orderType\":\"FAK\""));
     }
@@ -399,7 +405,7 @@ mod tests {
     fn test_build_order_query_body_order_type_gtc() {
         let order = test_order!(Side::Buy, OrderType::GTC);
         let body = order
-            .build_order_query_body("123", 0, "key", TEST_PK)
+            .build_order_query_body("123", "key", TEST_PK)
             .unwrap();
         assert!(body.contains("\"orderType\":\"GTC\""));
     }
@@ -408,7 +414,7 @@ mod tests {
     fn test_build_order_query_body_order_type_gtd() {
         let order = test_order!(Side::Buy, OrderType::GTD);
         let body = order
-            .build_order_query_body("123", 0, "key", TEST_PK)
+            .build_order_query_body("123", "key", TEST_PK)
             .unwrap();
         assert!(body.contains("\"orderType\":\"GTD\""));
     }
@@ -417,7 +423,7 @@ mod tests {
     fn test_build_order_query_body_buy_side() {
         let order = test_order!(Side::Buy, OrderType::GTC);
         let body = order
-            .build_order_query_body("123", 0, "key", TEST_PK)
+            .build_order_query_body("123", "key", TEST_PK)
             .unwrap();
         assert!(body.contains("\"side\":\"BUY\""));
     }
@@ -426,7 +432,7 @@ mod tests {
     fn test_build_order_query_body_sell_side() {
         let order = test_order!(Side::Sell, OrderType::GTC);
         let body = order
-            .build_order_query_body("123", 0, "key", TEST_PK)
+            .build_order_query_body("123", "key", TEST_PK)
             .unwrap();
         assert!(body.contains("\"side\":\"SELL\""));
     }
@@ -435,7 +441,7 @@ mod tests {
     fn test_build_order_query_body_contains_signature() {
         let order = test_order!(Side::Buy, OrderType::FOK);
         let body = order
-            .build_order_query_body("123", 0, "key", TEST_PK)
+            .build_order_query_body("123", "key", TEST_PK)
             .unwrap();
         assert!(body.contains("\"signature\":\"0x"));
     }
@@ -445,7 +451,7 @@ mod tests {
         let order = test_order!(Side::Buy, OrderType::FOK);
         let api_key = "my_test_api_key_12345";
         let body = order
-            .build_order_query_body("123", 0, api_key, TEST_PK)
+            .build_order_query_body("123", api_key, TEST_PK)
             .unwrap();
         assert!(body.contains(&format!("\"owner\":\"{}\"", api_key)));
     }
@@ -455,7 +461,7 @@ mod tests {
         let order = test_order!(Side::Buy, OrderType::FOK);
         let salt = "987654321";
         let body = order
-            .build_order_query_body(salt, 0, "key", TEST_PK)
+            .build_order_query_body(salt, "key", TEST_PK)
             .unwrap();
         assert!(body.contains(&format!("\"salt\":{}", salt)));
     }
@@ -465,7 +471,6 @@ mod tests {
         let order = Order::builder()
             .maker(TEST_MAKER)
             .signer(TEST_MAKER)
-            .taker(TEST_TAKER)
             .token_id(TEST_TOKEN_ID)
             .maker_amount(100)
             .taker_amount(50)

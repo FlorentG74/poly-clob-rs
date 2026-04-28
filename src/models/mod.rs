@@ -37,7 +37,6 @@
 //! let order = Order::builder()
 //!     .maker(&account.poly_address)
 //!     .signer(&account.poly_address)
-//!     .taker("0x0000000000000000000000000000000000000000")
 //!     .token_id("token_id")
 //!     .maker_amount(100)
 //!     .taker_amount(50)
