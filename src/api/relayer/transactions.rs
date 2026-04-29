@@ -12,14 +12,14 @@ pub mod contracts {
     /// CTF (Conditional Token Framework) contract address on Polygon.
     pub const CTF_CONTRACT: &str = "0x4d97dcd97ec945f40cf65f87097ace5ea0476045";
 
-    /// USDC.e (Bridged USDC) contract address on Polygon.
-    pub const USDC_E_CONTRACT: &str = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
+    /// pUSD (Polymarket USD) collateral token contract address on Polygon (v2).
+    pub const PUSD_CONTRACT: &str = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB";
 
-    /// CTF Exchange contract address.
-    pub const CTF_EXCHANGE: &str = "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E";
+    /// CTF Exchange contract address (v2).
+    pub const CTF_EXCHANGE: &str = "0xE111180000d2663C0091e4f400237545B87B996B";
 
-    /// Neg Risk CTF Exchange contract address.
-    pub const NEG_RISK_CTF_EXCHANGE: &str = "0xC5d563A36AE78145C45a50134d48A1215220f80a";
+    /// Neg Risk CTF Exchange contract address (v2).
+    pub const NEG_RISK_CTF_EXCHANGE: &str = "0xe2222d279d744050d28e00520010520000310F59";
 
     /// Neg Risk Adapter contract address.
     pub const NEG_RISK_ADAPTER: &str = "0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296";
@@ -131,11 +131,11 @@ pub fn create_redeem_tx(params: &RedeemParams) -> Result<Transaction> {
             parameter: "CTF_CONTRACT".to_string(),
             reason: "invalid CTF contract address".to_string(),
         })?;
-    let usdc_address: Address = contracts::USDC_E_CONTRACT
+    let collateral_address: Address = contracts::PUSD_CONTRACT
         .parse()
         .map_err(|_| ValidationError::InvalidParameter {
-            parameter: "USDC_E_CONTRACT".to_string(),
-            reason: "invalid USDC.e contract address".to_string(),
+            parameter: "PUSD_CONTRACT".to_string(),
+            reason: "invalid pUSD contract address".to_string(),
         })?;
 
     // Encode the function call:
@@ -149,7 +149,7 @@ pub fn create_redeem_tx(params: &RedeemParams) -> Result<Transaction> {
     // Encode parameters (all padded to 32 bytes):
     // 1. collateralToken (address) - left-padded to 32 bytes
     data.extend_from_slice(&[0u8; 12]); // 12 zero bytes padding
-    data.extend_from_slice(usdc_address.as_slice()); // 20 bytes address
+    data.extend_from_slice(collateral_address.as_slice()); // 20 bytes address
 
     // 2. parentCollectionId (bytes32)
     data.extend_from_slice(parent_collection_id.as_slice());
@@ -295,10 +295,10 @@ mod tests {
         let data = tx.data.as_ref();
         assert_eq!(&data[0..4], &selectors::REDEEM_POSITIONS);
 
-        // Verify USDC address is correctly encoded (after 12 bytes of padding)
-        let usdc_in_data = &data[16..36]; // Skip selector (4) + padding (12)
-        let expected_usdc: Address = contracts::USDC_E_CONTRACT.parse().unwrap();
-        assert_eq!(usdc_in_data, expected_usdc.as_slice());
+        // Verify pUSD address is correctly encoded (after 12 bytes of padding)
+        let collateral_in_data = &data[16..36]; // Skip selector (4) + padding (12)
+        let expected_collateral: Address = contracts::PUSD_CONTRACT.parse().unwrap();
+        assert_eq!(collateral_in_data, expected_collateral.as_slice());
 
         // Verify index set is 1 (for outcome_index 0: 1 << 0 = 1)
         let index_set_offset = 4 + 32 * 4 + 32; // selector + 4 params + array length

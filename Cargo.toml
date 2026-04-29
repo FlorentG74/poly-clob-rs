@@ -22,17 +22,17 @@ rust_decimal = { workspace = true }
 futures-executor = { workspace = true }
 alloy = { workspace = true, features = ["dyn-abi", "signer-local"] }
 
-reqwest = { version = "0.12.28", features = ["rustls-tls", "json"] }
+reqwest = { workspace = true }
 tokio = { version = "1", default-features = false, features = ["macros", "rt-multi-thread"] }
 dotenv = "0.15.0"
 hex = { version = "0.4.3" }
-sha2 = { version = "0.10.9" }
-hmac = "0.12.1"
+sha2 = { version = "0.11" }
+hmac = "0.13"
 base64 = { version = "0.22.1" }
-strum_macros = "0.27.2"
+strum_macros = "0.28"
 typed-builder = "0.23"
-rand = "0.8"
-diesel = { version = "2.3.5", features = ["postgres"], optional = true }
+rand = { workspace = true }
+diesel = { version = "2.3.8", features = ["postgres"], optional = true }
 
 [dev-dependencies]
 env_logger = "0.11"

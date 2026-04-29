@@ -14,7 +14,7 @@ use super::EIP712Struct;
 use base64::engine::general_purpose::URL_SAFE;
 use base64::prelude::*;
 use chrono::prelude::*;
-use hmac::Mac;
+use hmac::{KeyInit, Mac};
 use reqwest::header::HeaderMap;
 
 fn generate_values_hash(value: &DynSolValue) -> Result<Vec<u8>> {
