@@ -193,6 +193,73 @@ impl<'a> LimitOrderRequest<'a> {
         Ok(order)
     }
 
+    /// Execute a pre-built order, skipping the build/validation step.
+    ///
+    /// Use when you have already called [`build()`] for validation and want to avoid
+    /// redundant signing on the hot path. The `order` value is consumed and a fresh
+    /// timestamp/salt are applied before sending, matching the behaviour of [`execute()`].
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(String)` with the API response on success, or an error on failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// * The HTTP request fails
+    /// * The API returns an error response
+    pub async fn execute_order(&self, order: Order) -> Result<String> {
+        let mut order = order;
+
+        let method = "POST";
+        let request_path = POST_ORDER;
+
+        let callable_url = format!("{}{}", CLOB_API, request_path);
+
+        let client = get_http_client(Some(request_path));
+
+        let l2_timestamp = get_timestamp();
+        let now_ms = chrono::Utc::now().timestamp_millis() as u64;
+        order.timestamp = now_ms;
+        let order_salt = ((rand::random::<f64>() * now_ms as f64) as u64).to_string();
+        let body = order.build_order_query_body(
+            order_salt.as_str(),
+            self.signer.api_key.as_str(),
+            self.signer.private_key.as_str(),
+        )?;
+
+        let l2_headers = build_l2_headers(self.signer, method, request_path, &body, &l2_timestamp)?;
+
+        log::debug!("Signed Order body: {}", &body);
+
+        // Send the order placement request
+        let response = client
+            .post(&callable_url)
+            .header(CONTENT_TYPE, "application/json")
+            .header(ACCEPT, "application/json")
+            .headers(l2_headers)
+            .body(body)
+            .send()
+            .await
+            .map_err(|e| crate::api::error::HttpError::from_reqwest(e, callable_url.clone()))?;
+
+        log::trace!("API Call Raw Response: {:?}", response);
+
+        let status = response.status();
+        log::debug!("Order response status: {}", status);
+
+        // Log order side for debugging
+        if !status.is_success() {
+            log::error!(
+                "Error encountered while posting {} order: HTTP status {}",
+                order.side.to_lowercase_str(),
+                status
+            );
+        }
+
+        handle_api_response(response, &callable_url).await
+    }
+
     /// Executes the limit order request.
     ///
     /// # Returns

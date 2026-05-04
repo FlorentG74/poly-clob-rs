@@ -90,7 +90,7 @@ where
     serializer.serialize_str(&value.to_string())
 }
 
-#[derive(TypedBuilder)]
+#[derive(TypedBuilder, Clone)]
 #[builder(field_defaults(setter(into)))]
 pub struct Order {
     pub maker: String,
