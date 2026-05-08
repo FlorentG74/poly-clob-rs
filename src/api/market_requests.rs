@@ -527,6 +527,29 @@ pub async fn map_multiple_market_by_condition_ids_ws(
         }
     }
 
+    // The gamma API excludes closed markets by default (closed=false). Retry any missing
+    // condition_ids with closed=true to pick up resolved markets.
+    let missing: Vec<&str> = condition_ids
+        .iter()
+        .filter(|id| !markets_map.contains_key(*id))
+        .map(|s| s.as_str())
+        .collect();
+
+    if !missing.is_empty() {
+        let closed_markets = MarketsRequest::builder()
+            .condition_ids(missing)
+            .closed(Some(true))
+            .build()
+            .execute()
+            .await?;
+
+        for m in closed_markets.data.into_iter() {
+            if let Some(condition_id) = m.condition_id.clone() {
+                markets_map.insert(condition_id, m);
+            }
+        }
+    }
+
     Ok(markets_map)
 }
 
