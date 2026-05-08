@@ -111,6 +111,15 @@ pub struct LimitOrderRequest<'a> {
     /// Order expiration timestamp (required for GTD, must be 0 for others)
     #[builder(default = 0)]
     pub expiration: i64,
+    /// Paper-trade hint: market slug (ignored for live orders)
+    #[builder(default)]
+    pub market_slug: Option<&'a str>,
+    /// Paper-trade hint: market title / question (ignored for live orders)
+    #[builder(default)]
+    pub market_title: Option<&'a str>,
+    /// Paper-trade hint: outcome label e.g. "Up"/"Down" (ignored for live orders)
+    #[builder(default)]
+    pub outcome: Option<&'a str>,
 }
 
 impl<'a> LimitOrderRequest<'a> {
