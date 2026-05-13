@@ -38,6 +38,7 @@
 //! let url = request.get_callable_url(0);
 //! ```
 
+pub mod account_requests;
 pub mod auth;
 pub mod activity_requests;
 pub mod clob_endpoints;

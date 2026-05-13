@@ -5,7 +5,7 @@
 use crate::api::error::Result;
 
 use crate::api::auth::build_l2_headers;
-use crate::api::http_client::get_default_http_client;
+use crate::api::http_client::get_http_client;
 use crate::api::response_handler::handle_api_response;
 use crate::models::{Account, AssetType};
 use crate::WebserviceRequest;

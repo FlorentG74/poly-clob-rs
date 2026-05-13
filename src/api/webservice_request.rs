@@ -111,50 +111,78 @@ impl WebserviceRequest {
             callable_url,
         );
 
-        let request = match web_service_request.method {
-            Method::GET => client.get(&callable_url),
-            Method::POST => {
-                let req = client.post(&callable_url);
-                if let Some(body) = web_service_request.get_body() {
-                    req.body(body)
-                } else {
-                    req
+        const MAX_RETRIES: u32 = 3;
+        let mut attempt = 0u32;
+
+        loop {
+            let request = match web_service_request.method {
+                Method::GET => client.get(&callable_url),
+                Method::POST => {
+                    let req = client.post(&callable_url);
+                    if let Some(body) = web_service_request.get_body() {
+                        req.body(body)
+                    } else {
+                        req
+                    }
                 }
+                _ => {
+                    return Err(crate::ClobError::Validation(
+                        crate::ValidationError::InvalidParameter {
+                            parameter: "method".to_string(),
+                            reason: format!("Unsupported method: {}", web_service_request.method),
+                        },
+                    ));
+                }
+            };
+
+            let result: crate::Result<(i32, T)> = async {
+                let response = request
+                    .send()
+                    .await
+                    .map_err(|e| crate::HttpError::from_reqwest(e, &callable_url))?;
+
+                let response_text = handle_api_response(response, &callable_url).await?;
+
+                let ws_response: T = serde_json::from_str(&response_text).map_err(|e| {
+                    crate::ClobError::from(crate::SerializationError::JsonDeserialize {
+                        message: e.to_string(),
+                        raw_response: response_text.clone(),
+                    })
+                })?;
+
+                let nb_results_retrieved = ws_response.nb_results() as i32;
+                log::debug!("Retrieved {:?} results", nb_results_retrieved);
+
+                let new_offset = if nb_results_retrieved == web_service_request.get_limit() {
+                    next_offset + web_service_request.get_limit()
+                } else {
+                    -1
+                };
+
+                Ok((new_offset, ws_response))
             }
-            _ => {
-                return Err(crate::ClobError::Validation(
-                    crate::ValidationError::InvalidParameter {
-                        parameter: "method".to_string(),
-                        reason: format!("Unsupported method: {}", web_service_request.method),
-                    },
-                ));
+            .await;
+
+            match result {
+                Ok(v) => return Ok(v),
+                Err(e) if e.is_retryable() && attempt < MAX_RETRIES => {
+                    attempt += 1;
+                    let delay = e
+                        .retry_after()
+                        .unwrap_or(std::time::Duration::from_secs(2));
+                    log::warn!(
+                        "Transient error on attempt {}/{} for {}: {}. Retrying after {:?}",
+                        attempt,
+                        MAX_RETRIES,
+                        callable_url,
+                        e,
+                        delay
+                    );
+                    tokio::time::sleep(delay).await;
+                }
+                Err(e) => return Err(e),
             }
-        };
-
-        let response = request
-            .send()
-            .await
-            .map_err(|e| crate::HttpError::from_reqwest(e, &callable_url))?;
-
-        let response_text = handle_api_response(response, &callable_url).await?;
-
-        let ws_response: T = serde_json::from_str(&response_text).map_err(|e| {
-            crate::ClobError::from(crate::SerializationError::JsonDeserialize {
-                message: e.to_string(),
-                raw_response: response_text.clone(),
-            })
-        })?;
-
-        let nb_results_retrieved = ws_response.nb_results() as i32;
-        log::debug!("Retrieved {:?} results", nb_results_retrieved);
-
-        let next_offset = if nb_results_retrieved == web_service_request.get_limit() {
-            next_offset + web_service_request.get_limit()
-        } else {
-            -1
-        };
-
-        Ok((next_offset, ws_response))
+        }
     }
 
     /// Fetch a single item from API without pagination.
@@ -204,39 +232,67 @@ impl WebserviceRequest {
             callable_url,
         );
 
-        let request = match web_service_request.method {
-            Method::GET => client.get(&callable_url),
-            Method::POST => {
-                let req = client.post(&callable_url);
-                if let Some(body) = web_service_request.get_body() {
-                    req.body(body)
-                } else {
-                    req
+        const MAX_RETRIES: u32 = 3;
+        let mut attempt = 0u32;
+
+        loop {
+            let request = match web_service_request.method {
+                Method::GET => client.get(&callable_url),
+                Method::POST => {
+                    let req = client.post(&callable_url);
+                    if let Some(body) = web_service_request.get_body() {
+                        req.body(body)
+                    } else {
+                        req
+                    }
                 }
+                _ => {
+                    return Err(crate::ClobError::Validation(
+                        crate::ValidationError::InvalidParameter {
+                            parameter: "method".to_string(),
+                            reason: format!("Unsupported method: {}", web_service_request.method),
+                        },
+                    ));
+                }
+            };
+
+            let result: crate::Result<T> = async {
+                let response = request
+                    .send()
+                    .await
+                    .map_err(|e| crate::HttpError::from_reqwest(e, &callable_url))?;
+
+                let response_text = handle_api_response(response, &callable_url).await?;
+
+                serde_json::from_str::<T>(&response_text).map_err(|e| {
+                    crate::ClobError::from(crate::SerializationError::JsonDeserialize {
+                        message: e.to_string(),
+                        raw_response: response_text.clone(),
+                    })
+                })
             }
-            _ => {
-                return Err(crate::ClobError::Validation(
-                    crate::ValidationError::InvalidParameter {
-                        parameter: "method".to_string(),
-                        reason: format!("Unsupported method: {}", web_service_request.method),
-                    },
-                ));
+            .await;
+
+            match result {
+                Ok(v) => return Ok(v),
+                Err(e) if e.is_retryable() && attempt < MAX_RETRIES => {
+                    attempt += 1;
+                    let delay = e
+                        .retry_after()
+                        .unwrap_or(std::time::Duration::from_secs(2));
+                    log::warn!(
+                        "Transient error on attempt {}/{} for {}: {}. Retrying after {:?}",
+                        attempt,
+                        MAX_RETRIES,
+                        callable_url,
+                        e,
+                        delay
+                    );
+                    tokio::time::sleep(delay).await;
+                }
+                Err(e) => return Err(e),
             }
-        };
-
-        let response = request
-            .send()
-            .await
-            .map_err(|e| crate::HttpError::from_reqwest(e, &callable_url))?;
-
-        let response_text = handle_api_response(response, &callable_url).await?;
-
-        serde_json::from_str::<T>(&response_text).map_err(|e| {
-            crate::ClobError::from(crate::SerializationError::JsonDeserialize {
-                message: e.to_string(),
-                raw_response: response_text.clone(),
-            })
-        })
+        }
     }
 
     /// Build a URL for a keyset-paginated request.
@@ -322,43 +378,71 @@ impl WebserviceRequest {
             callable_url,
         );
 
-        let request = match web_service_request.method {
-            Method::GET => client.get(&callable_url),
-            Method::POST => {
-                let req = client.post(&callable_url);
-                if let Some(body) = web_service_request.get_body() {
-                    req.body(body)
-                } else {
-                    req
+        const MAX_RETRIES: u32 = 3;
+        let mut attempt = 0u32;
+
+        loop {
+            let request = match web_service_request.method {
+                Method::GET => client.get(&callable_url),
+                Method::POST => {
+                    let req = client.post(&callable_url);
+                    if let Some(body) = web_service_request.get_body() {
+                        req.body(body)
+                    } else {
+                        req
+                    }
                 }
+                _ => {
+                    return Err(crate::ClobError::Validation(
+                        crate::ValidationError::InvalidParameter {
+                            parameter: "method".to_string(),
+                            reason: format!("Unsupported method: {}", web_service_request.method),
+                        },
+                    ));
+                }
+            };
+
+            let result: crate::Result<T> = async {
+                let response = request
+                    .send()
+                    .await
+                    .map_err(|e| crate::HttpError::from_reqwest(e, &callable_url))?;
+
+                let response_text = handle_api_response(response, &callable_url).await?;
+
+                let ws_response: T = serde_json::from_str(&response_text).map_err(|e| {
+                    crate::ClobError::from(crate::SerializationError::JsonDeserialize {
+                        message: e.to_string(),
+                        raw_response: response_text.clone(),
+                    })
+                })?;
+
+                log::debug!("Keyset page: next_cursor={:?}", ws_response.next_cursor());
+
+                Ok(ws_response)
             }
-            _ => {
-                return Err(crate::ClobError::Validation(
-                    crate::ValidationError::InvalidParameter {
-                        parameter: "method".to_string(),
-                        reason: format!("Unsupported method: {}", web_service_request.method),
-                    },
-                ));
+            .await;
+
+            match result {
+                Ok(v) => return Ok(v),
+                Err(e) if e.is_retryable() && attempt < MAX_RETRIES => {
+                    attempt += 1;
+                    let delay = e
+                        .retry_after()
+                        .unwrap_or(std::time::Duration::from_secs(2));
+                    log::warn!(
+                        "Transient error on attempt {}/{} for {}: {}. Retrying after {:?}",
+                        attempt,
+                        MAX_RETRIES,
+                        callable_url,
+                        e,
+                        delay
+                    );
+                    tokio::time::sleep(delay).await;
+                }
+                Err(e) => return Err(e),
             }
-        };
-
-        let response = request
-            .send()
-            .await
-            .map_err(|e| crate::HttpError::from_reqwest(e, &callable_url))?;
-
-        let response_text = handle_api_response(response, &callable_url).await?;
-
-        let ws_response: T = serde_json::from_str(&response_text).map_err(|e| {
-            crate::ClobError::from(crate::SerializationError::JsonDeserialize {
-                message: e.to_string(),
-                raw_response: response_text.clone(),
-            })
-        })?;
-
-        log::debug!("Keyset page: next_cursor={:?}", ws_response.next_cursor());
-
-        Ok(ws_response)
+        }
     }
 
     pub fn add_param_to_url(url: &mut String, name: &str, value: &str) {

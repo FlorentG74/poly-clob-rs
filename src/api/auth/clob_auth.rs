@@ -2,9 +2,8 @@ use alloy::{
     dyn_abi::DynSolValue,
     hex,
     primitives::{keccak256, Address, B256, U256},
-    signers::{local::PrivateKeySigner, Signer as AlloySigner},
+    signers::{local::PrivateKeySigner, SignerSync},
 };
-use futures_executor::block_on;
 use std::str::FromStr;
 
 use crate::api::error::{AuthError, Result};
@@ -132,7 +131,7 @@ pub fn build_l1_signature(
     })?;
     log::trace!("\nSigner address: {}", wallet.address());
 
-    let signature = block_on(wallet.sign_hash(&eip712_hash)).map_err(|e| {
+    let signature = wallet.sign_hash_sync(&eip712_hash).map_err(|e| {
         AuthError::SignatureFailed {
             message: format!("failed to sign EIP712 hash: {}", e),
         }
