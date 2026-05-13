@@ -44,6 +44,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    #[ignore = "live network — run with: cargo test -p poly-clob-rs -- --ignored"]
     async fn test_get_fee_rate_with_market_token_ids() {
         // First, fetch a market with active orders
         use crate::api::market_requests::MarketsRequest;
@@ -99,6 +100,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "live network — run with: cargo test -p poly-clob-rs -- --ignored"]
     async fn test_get_fee_rate_with_real_api() {
         // Test fetching a fee rate - using a market's token ID for reliability
         use crate::api::market_requests::MarketsRequest;
@@ -137,6 +139,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "live network — run with: cargo test -p poly-clob-rs -- --ignored"]
     async fn test_get_fee_rate_debug_response() {
         // Test to see the raw API response for debugging
         // First fetch a market to get a valid token ID
