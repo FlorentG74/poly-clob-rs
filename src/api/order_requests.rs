@@ -615,9 +615,8 @@ mod tests {
     /// Verifies that get_order_by_id() auth works end-to-end.
     /// A non-401 response (including 404 "not found") means the HMAC was accepted.
     ///
-    /// Run with: cargo test -p poly-clob-rs -- --ignored --nocapture
+    /// Run with: cargo test -p poly-clob-rs test_order_status_auth_live -- --nocapture
     #[tokio::test]
-    #[ignore = "live network — run with: cargo test -p poly-clob-rs -- --ignored"]
     async fn test_order_status_auth_live() {
         let account = crate::models::Account::load_poly_account()
             .expect("load poly account from .env");
