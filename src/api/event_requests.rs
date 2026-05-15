@@ -3,9 +3,10 @@ use reqwest::Method;
 use typed_builder::TypedBuilder;
 
 use crate::api::http_client::get_http_client;
-use super::{WebserviceRequest, GAMMA_API, GET_EVENTS_KEYSET, GET_EVENT_SERIES};
+use super::{WebserviceRequest, GAMMA_API, GET_EVENTS, GET_EVENTS_KEYSET};
 use crate::models::event::{KeysetEventsResponse, PolyResponseEvent};
-use crate::models::event_series::PolyResponseEventSeries;
+use crate::models::market::Event;
+
 
 impl WebserviceRequest {
     /// Build a request to fetch events by ID via the keyset endpoint.
@@ -16,17 +17,6 @@ impl WebserviceRequest {
             method: Method::GET,
             with_pagination: false,
             args: vec![("id".to_string(), id.to_string())],
-            body: None,
-        }
-    }
-
-    pub fn new_event_series_request(slug: &str) -> Self {
-        WebserviceRequest {
-            api: GAMMA_API.to_string(),
-            url: GET_EVENT_SERIES.to_string(),
-            method: Method::GET,
-            with_pagination: false,
-            args: vec![("slug".to_string(), slug.to_string())],
             body: None,
         }
     }
@@ -69,41 +59,49 @@ impl<'a> EventBySlugRequest<'a> {
     }
 }
 
-/// Request builder for fetching an event series by slug.
+// ============================================================================
+// SeriesEventsRequest - fetch active events for a series ordered by endDate
+// ============================================================================
+
+/// Request builder for fetching the active events of a recurring series, ordered
+/// by `end_date` ascending.
 ///
-/// Returns the series with its list of events, useful for finding
-/// the current/upcoming event in a recurring series.
+/// Unlike the `/series` endpoint (capped at the 20 most-recently *created* events),
+/// this queries `GET /events` filtered by `series_slug` so it finds whichever
+/// events are currently open regardless of when they were created.
+/// The first result whose `end_date > now` is the currently-running event.
 #[derive(TypedBuilder)]
-pub struct EventSeriesRequest<'a> {
+pub struct SeriesEventsRequest<'a> {
+    /// Series slug (e.g. `"btc-up-or-down-hourly"`)
     #[builder(setter(into))]
-    pub slug: &'a str,
+    pub series_slug: &'a str,
+    /// Maximum number of events to return (default: 20).
+    #[builder(default = 20)]
+    pub limit: i32,
 }
 
-impl<'a> EventSeriesRequest<'a> {
-    pub async fn execute(&self) -> Result<PolyResponseEventSeries> {
+impl<'a> SeriesEventsRequest<'a> {
+    /// Execute the request and return events ordered by `end_date` ascending
+    /// (as requested from the API; no client-side sort).
+    pub async fn execute(&self) -> Result<Vec<Event>> {
         let client = get_http_client(None);
 
-        let web_service_request = WebserviceRequest {
+        let mut req = WebserviceRequest {
             api: GAMMA_API.to_string(),
-            url: GET_EVENT_SERIES.to_string(),
+            url: GET_EVENTS.to_string(),
             method: Method::GET,
             with_pagination: false,
-            args: vec![("slug".to_string(), self.slug.to_string())],
+            args: Vec::new(),
             body: None,
         };
 
-        let callable_url = web_service_request.get_callable_url(0);
-        let series =
-            WebserviceRequest::fetch_one::<Vec<PolyResponseEventSeries>>(client, &web_service_request)
-                .await?;
+        req.add_arg("series_slug".to_string(), self.series_slug.to_string());
+        req.add_arg("order".to_string(), "end_date".to_string());
+        req.add_arg("ascending".to_string(), "true".to_string());
+        req.add_arg("closed".to_string(), "false".to_string());
+        req.add_arg("limit".to_string(), self.limit.to_string());
 
-        series.into_iter().next().ok_or_else(|| {
-            crate::ApiError::NotFound {
-                url: callable_url,
-                resource: format!("event series with slug: {}", self.slug),
-            }
-            .into()
-        })
+        WebserviceRequest::fetch_one::<Vec<Event>>(client, &req).await
     }
 }
 

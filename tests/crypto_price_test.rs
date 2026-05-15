@@ -1,27 +1,35 @@
 //! Integration test for crypto price API with event series.
 
+use chrono::Utc;
 use poly_clob_rs::api::crypto_price_requests::CryptoPriceRequest;
-use poly_clob_rs::api::event_requests::EventSeriesRequest;
+use poly_clob_rs::api::event_requests::SeriesEventsRequest;
 
 #[tokio::test]
 async fn test_fetch_btc_hourly_open_price() {
-    let series = EventSeriesRequest::builder()
-        .slug("btc-up-or-down-hourly")
+    let events = SeriesEventsRequest::builder()
+        .series_slug("btc-up-or-down-hourly")
         .build()
         .execute()
         .await
-        .expect("Failed to fetch series");
+        .expect("Failed to fetch series events");
 
-    let event_slug = series
-        .current_event()
-        .map(|e| e.slug.clone())
+    let now = Utc::now();
+    let current = events
+        .iter()
+        .find(|e| e.end_date > now)
         .expect("No active event found");
 
-    let start_ts = series
-        .current_event_start_ts()
-        .expect("Could not determine event start timestamp");
+    // Derive event duration from first consecutive pair with a positive gap.
+    // Falls back to 3600s (1 hour) when only one event is returned (e.g. end-of-series).
+    let duration_secs = events
+        .windows(2)
+        .map(|w| (w[1].end_date - w[0].end_date).num_seconds())
+        .find(|&d| d > 0)
+        .unwrap_or(3600);
 
-    println!("[btc-up-or-down-hourly] slug={} start_ts={}", event_slug, start_ts);
+    let start_ts = current.end_date.timestamp() - duration_secs;
+
+    println!("[btc-up-or-down-hourly] slug={} start_ts={}", current.slug, start_ts);
 
     let crypto_price = CryptoPriceRequest::builder()
         .symbol("BTC")
@@ -38,5 +46,5 @@ async fn test_fetch_btc_hourly_open_price() {
     println!("  Incomplete:  {}", crypto_price.incomplete);
 
     assert!(crypto_price.has_open_price(), "Should have open price available");
-    println!("BTC strike for {}: ${:.2}", event_slug, crypto_price.open_price.unwrap());
+    println!("BTC strike for {}: ${:.2}", current.slug, crypto_price.open_price.unwrap());
 }

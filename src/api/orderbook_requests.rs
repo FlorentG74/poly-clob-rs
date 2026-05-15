@@ -360,44 +360,25 @@ mod tests {
     /// 4. Queries order books for all token IDs
     #[tokio::test]
     async fn test_fetch_orderbooks_for_sol_15m_current_event() {
-        use crate::api::clob_endpoints::{GAMMA_API, GET_EVENT_SERIES};
-        use crate::api::event_requests::EventBySlugRequest;
-        use crate::{EventSeriesResponse, WebserviceRequest};
+        use crate::api::event_requests::{EventBySlugRequest, SeriesEventsRequest};
         use chrono::Utc;
 
         let event_series_slug = "sol-up-or-down-15m";
 
-        // Step 1: Fetch the event series to find the current event
+        // Step 1: Fetch active events for the series
         println!("Fetching event series: {}", event_series_slug);
-        let mut ws_request = WebserviceRequest {
-            api: GAMMA_API.to_string(),
-            url: GET_EVENT_SERIES.to_string(),
-            method: Method::GET,
-            with_pagination: true,
-            args: Vec::new(),
-            body: None,
-        };
-        ws_request.add_arg("slug".to_string(), event_series_slug.to_string());
-        let client = crate::api::http_client::get_http_client(None);
+        let events = SeriesEventsRequest::builder()
+            .series_slug(event_series_slug)
+            .build()
+            .execute()
+            .await
+            .expect("Failed to fetch series events");
 
-        let (_, event_series) =
-            WebserviceRequest::fetch_batch::<EventSeriesResponse>(client, &ws_request, 0)
-                .await
-                .expect("Failed to fetch event series");
-
-        assert!(!event_series.is_empty(), "Event series response is empty");
-
-        let series = &event_series[0];
-        println!(
-            "Found event series: {} with {} events",
-            series.title,
-            series.events.len()
-        );
+        assert!(!events.is_empty(), "No events returned for series");
 
         // Step 2: Find the current active event (first with end_date > now)
         let now = Utc::now();
-        let current_event = series
-            .events
+        let current_event = events
             .iter()
             .find(|e| e.end_date > now)
             .expect("No active event found in series");
