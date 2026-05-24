@@ -244,3 +244,60 @@ pub fn get_timestamp() -> String {
     let now = Utc::now();
     now.timestamp().to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::auth::l1_header::L1Header;
+
+    // Hardhat/Anvil test key #0 — never use in production.
+    const TEST_PK: &str = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+    const TEST_ADDR: &str = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+    // base64-url encoding of the 11-byte string "test_secret"
+    const TEST_SECRET: &str = "dGVzdF9zZWNyZXQ=";
+
+    #[test]
+    fn build_hmac_signature_known_answer() {
+        let sig = build_hmac_signature(TEST_SECRET, "1234567890", "GET", "/order", "").unwrap();
+        assert_eq!(sig, "88x8_EbYF1_5tnRn6m0trRwtOUfiyc_GlorAmkGnmw0=");
+    }
+
+    #[test]
+    fn build_hmac_signature_with_body() {
+        let body = r#"{"price":"0.50","size":"10"}"#;
+        let sig = build_hmac_signature(TEST_SECRET, "9999999999", "POST", "/order", body).unwrap();
+        assert_eq!(sig, "suII_40EB21_4TzXFbEfmxWJ1-0V5KdJmiYgB0txRT8=");
+    }
+
+    #[test]
+    fn build_hmac_signature_invalid_secret_errors() {
+        let result = build_hmac_signature("not-valid-base64!!!", "1234567890", "GET", "/", "");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn build_l1_signature_known_answer() {
+        let l1 = L1Header::new(TEST_ADDR);
+        let sig = build_l1_signature(&l1, "1234567890", TEST_PK).unwrap();
+        assert!(sig.starts_with("0x"), "signature must have 0x prefix");
+        assert_eq!(sig.len(), 132, "signature must be 65 bytes (130 hex + 0x)");
+        assert_eq!(
+            sig,
+            "0x62517b928ac379abcc72209fb9099da9f6154a55f7e3057d060e532d00537a3a4bebc22bc943836755d1b3d576be2bec7e20d0288fed4b1252ff6a342323d2551c"
+        );
+    }
+
+    #[test]
+    fn build_l1_signature_invalid_pk_errors() {
+        let l1 = L1Header::new(TEST_ADDR);
+        let result = build_l1_signature(&l1, "1234567890", "not_a_private_key");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn build_l1_signature_invalid_address_errors() {
+        let l1 = L1Header::new("not_an_address");
+        let result = build_l1_signature(&l1, "1234567890", TEST_PK);
+        assert!(result.is_err());
+    }
+}
