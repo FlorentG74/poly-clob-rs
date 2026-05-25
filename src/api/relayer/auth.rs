@@ -45,7 +45,7 @@ impl BuilderCredentials {
     /// - `POLY_BUILDER_API_PASSPHRASE`
     pub fn from_env() -> Result<Self> {
         use std::env;
-        dotenv::dotenv().ok();
+        dotenvy::dotenv().ok();
 
         Ok(Self {
             api_key: env::var("POLY_BUILDER_API_KEY")

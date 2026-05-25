@@ -59,7 +59,7 @@ fn load_telegram_config() -> TelegramConfig {
 
 impl Account {
     pub fn load_poly_account() -> Result<Self> {
-        use dotenv::dotenv;
+        use dotenvy::dotenv;
         use std::env;
 
         dotenv().ok();
@@ -101,7 +101,7 @@ impl Account {
     }
 
     pub fn load_paper_account(account_name: &str) -> Self {
-        use dotenv::dotenv;
+        use dotenvy::dotenv;
 
         dotenv().ok();
 
@@ -125,7 +125,7 @@ impl Account {
     }
 
     pub fn load_binance_account(account_name: &str) -> Self {
-        use dotenv::dotenv;
+        use dotenvy::dotenv;
 
         dotenv().ok();
 
