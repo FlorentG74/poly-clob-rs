@@ -756,3 +756,130 @@ impl RelayerError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    fn rate_limited() -> ClobError {
+        ClobError::Api(ApiError::RateLimited {
+            retry_after: Duration::from_secs(30),
+            url: "https://api.example.com".into(),
+            retry_after_header: Some("30".into()),
+        })
+    }
+
+    fn unauthorized() -> ClobError {
+        ClobError::Api(ApiError::Unauthorized {
+            url: "https://api.example.com".into(),
+            details: None,
+        })
+    }
+
+    fn order_not_fillable() -> ClobError {
+        ClobError::Api(ApiError::OrderNotFillable {
+            url: "https://api.example.com".into(),
+            message: "order couldn't be fully filled".into(),
+            raw_response: "{}".into(),
+        })
+    }
+
+    fn timeout() -> ClobError {
+        ClobError::Http(HttpError::Timeout {
+            url: "https://api.example.com".into(),
+            timeout: Duration::from_secs(30),
+        })
+    }
+
+    fn server_error_transient() -> ClobError {
+        ClobError::Api(ApiError::ServerError {
+            status: 503,
+            url: "https://api.example.com".into(),
+            is_transient: true,
+            response_body: None,
+        })
+    }
+
+    // --- is_retryable ---
+
+    #[test]
+    fn rate_limited_is_retryable() {
+        assert!(rate_limited().is_retryable());
+    }
+
+    #[test]
+    fn timeout_is_retryable() {
+        assert!(timeout().is_retryable());
+    }
+
+    #[test]
+    fn transient_server_error_is_retryable() {
+        assert!(server_error_transient().is_retryable());
+    }
+
+    #[test]
+    fn unauthorized_is_not_retryable() {
+        assert!(!unauthorized().is_retryable());
+    }
+
+    #[test]
+    fn order_not_fillable_is_not_retryable() {
+        assert!(!order_not_fillable().is_retryable());
+    }
+
+    // --- retry_after ---
+
+    #[test]
+    fn rate_limited_retry_after_matches_header() {
+        assert_eq!(rate_limited().retry_after(), Some(Duration::from_secs(30)));
+    }
+
+    #[test]
+    fn timeout_retry_after_is_some() {
+        assert!(timeout().retry_after().is_some());
+    }
+
+    #[test]
+    fn unauthorized_retry_after_is_none() {
+        assert_eq!(unauthorized().retry_after(), None);
+    }
+
+    // --- is_auth_error ---
+
+    #[test]
+    fn unauthorized_is_auth_error() {
+        assert!(unauthorized().is_auth_error());
+    }
+
+    #[test]
+    fn rate_limited_is_not_auth_error() {
+        assert!(!rate_limited().is_auth_error());
+    }
+
+    // --- is_recoverable_order_error ---
+
+    #[test]
+    fn order_not_fillable_is_recoverable() {
+        assert!(order_not_fillable().is_recoverable_order_error());
+    }
+
+    #[test]
+    fn insufficient_balance_is_recoverable() {
+        let err = ClobError::Api(ApiError::InsufficientBalance {
+            url: "https://api.example.com".into(),
+            message: "not enough funds".into(),
+        });
+        assert!(err.is_recoverable_order_error());
+    }
+
+    #[test]
+    fn unauthorized_is_not_recoverable_order_error() {
+        assert!(!unauthorized().is_recoverable_order_error());
+    }
+
+    #[test]
+    fn rate_limited_is_not_recoverable_order_error() {
+        assert!(!rate_limited().is_recoverable_order_error());
+    }
+}
