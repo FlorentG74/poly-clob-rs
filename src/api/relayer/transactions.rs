@@ -12,8 +12,8 @@ pub mod contracts {
     /// CTF (Conditional Token Framework) contract address on Polygon.
     pub const CTF_CONTRACT: &str = "0x4d97dcd97ec945f40cf65f87097ace5ea0476045";
 
-    /// pUSD (Polymarket USD) collateral token contract address on Polygon (v2).
-    pub const PUSD_CONTRACT: &str = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB";
+    /// USDC collateral token contract address on Polygon (Polymarket v2+).
+    pub const PUSD_CONTRACT: &str = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
 
     /// CTF Exchange contract address (v2).
     pub const CTF_EXCHANGE: &str = "0xE111180000d2663C0091e4f400237545B87B996B";
@@ -357,3 +357,19 @@ mod tests {
         assert!(create_redeem_tx(&params).is_err());
     }
 }
+
+    #[test]
+    fn test_compute_ctf_selectors() {
+        use alloy::primitives::keccak256;
+        let sigs = [
+            "payoutDenominator(bytes32)",
+            "payoutNumerators(bytes32,uint256)",
+            "redeemPositions(address,bytes32,bytes32,uint256[])",
+            "nonces(address)",
+            "getNonce(address)",
+        ];
+        for sig in &sigs {
+            let h = keccak256(sig.as_bytes());
+            println!("{}: 0x{}", sig, hex::encode(&h[..4]));
+        }
+    }

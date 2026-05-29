@@ -378,6 +378,16 @@ mod tests {
     }
 
     #[test]
+    fn test_derive_addresses_for_actual_eoa() {
+        let eoa: Address = "0xCdD5dACeDfDD8e4571b6475F729699a52C1B2E97".parse().unwrap();
+        let safe = derive_safe_address(&eoa);
+        let proxy = derive_proxy_address(&eoa);
+        println!("EOA: {}", eoa);
+        println!("Derived Safe: {}", safe);
+        println!("Derived Proxy: {}", proxy);
+    }
+
+    #[test]
     fn test_derive_safe_address_deterministic() {
         // Verify that derive_safe_address produces consistent results
         let eoa: Address = "0x1234567890123456789012345678901234567890".parse().unwrap();
@@ -386,6 +396,52 @@ mod tests {
         assert_eq!(safe1, safe2, "derive_safe_address must be deterministic");
         // The derived address should be different from the EOA
         assert_ne!(safe1, eoa, "Safe address must differ from EOA");
+    }
+
+    /// Known-answer test: proxy signature matches the TypeScript builder-relayer-client
+    /// test vector from tests/signatures/index.test.ts
+    #[tokio::test]
+    async fn test_sign_proxy_transaction_known_answer() {
+        use crate::api::relayer::transactions::{encode_proxy_call_data, contracts};
+        use super::super::types::Transaction;
+        use alloy::primitives::U256;
+
+        let signer = PrivateKeySigner::from_str(
+            "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+        ).unwrap();
+        let from = signer.address();
+
+        let proxy_factory: Address = contracts::PROXY_FACTORY.parse().unwrap();
+        let relay_hub: Address = contracts::RELAY_HUB.parse().unwrap();
+        let relay_addr: Address = "0xae700edfd9ab986395f3999fe11177b9903a52f1".parse().unwrap();
+
+        // approve(CTF, uint256_max) on USDC — same as in the TypeScript test vector
+        let usdc: Address = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174".parse().unwrap();
+        let approve_calldata = hex::decode(
+            "095ea7b30000000000000000000000004d97dcd97ec945f40cf65f87097ace5ea0476045\
+             ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        ).unwrap();
+
+        let inner_tx = Transaction {
+            to: usdc,
+            data: Bytes::from(approve_calldata),
+            value: U256::ZERO,
+        };
+        let proxy_data = encode_proxy_call_data(&[inner_tx]);
+
+        let sig = sign_proxy_transaction(
+            &signer, &from, &proxy_factory, &proxy_data,
+            85338, // gasLimit from test vector
+            0,     // nonce from test vector
+            &relay_hub, &relay_addr,
+        ).await.unwrap();
+
+        assert_eq!(
+            sig,
+            "0x4c18e2d2294a00d686714aff8e7936ab657cb4655dfccb2b556efadcb7e835f8\
+             00dc2fecec69c501e29bb36ecb54b4da6b7c410c4dc740a33af2afde2b77297e1b",
+            "Proxy signature must match TypeScript reference"
+        );
     }
 
     #[tokio::test]

@@ -8,11 +8,11 @@ use super::auth::{
     build_builder_headers, derive_proxy_address, derive_safe_address, sign_proxy_transaction,
     sign_safe_transaction, BuilderCredentials,
 };
+use super::transactions::{contracts, encode_proxy_call_data};
 use super::endpoints::{
     GET_DEPLOYED, GET_NONCE, GET_RELAY_PAYLOAD, GET_TRANSACTION, GET_TRANSACTIONS, RELAYER_API,
     SUBMIT_TRANSACTION,
 };
-use super::transactions::{contracts, encode_proxy_call_data};
 use super::types::{
     DeployedResponse, NonceResponse, RelayPayloadResponse, RelayerTransaction,
     RelayerTransactionResponse, RelayerTransactionState, RelayerTxType, SafeTransaction,
@@ -525,14 +525,13 @@ impl RelayerClient {
         Self::parse_submit_response(&body_text)
     }
 
-    /// Submit a Proxy transaction to the relayer.
+    /// Submit a Proxy transaction to the relayer using GSN v1 signing.
     ///
-    /// Implements the Polymarket Proxy relayer format matching the TypeScript
-    /// `builder-relayer-client`:
-    /// 1. Get relay payload (relay address + nonce) from relayer
-    /// 2. Encode transactions as proxy factory call
-    /// 3. Sign with proxy struct hash
-    /// 4. Submit with proper request format
+    /// The PROXY flow:
+    /// 1. Fetch relay address + nonce from `/relay-payload?address=&type=PROXY`
+    /// 2. Wrap inner transactions with `proxy(...)` call targeting ProxyWalletFactory
+    /// 3. Sign using GSN "rlx:" scheme (EIP-191 personal sign over struct hash)
+    /// 4. Submit with GSN-style signatureParams: gasLimit, relayerFee, relayHub, relay
     pub async fn submit_proxy(
         &self,
         transactions: Vec<Transaction>,
@@ -571,36 +570,41 @@ impl RelayerClient {
 
         log::info!("EOA: {}, Proxy wallet: {}", eoa, proxy_address);
 
-        // Get relay payload (relay address + nonce)
+        // Fetch relay address and nonce from relay-payload endpoint
         let relay_payload = self.get_relay_payload(&eoa_str).await?;
-        let relay_address: Address = relay_payload.address.parse().map_err(|_| {
+        let nonce = relay_payload.nonce;
+        let relay_address_str = relay_payload.address.clone();
+        let relay_address: Address = relay_address_str.parse().map_err(|_| {
             AuthError::InvalidAddress {
                 address: relay_payload.address.clone(),
             }
         })?;
-        let nonce = relay_payload.nonce;
-        log::info!("Relay address: {}, Nonce: {}", relay_address, nonce);
 
-        // ProxyFactory is the `to` address for proxy transactions
-        let proxy_factory: Address = contracts::PROXY_FACTORY.parse().expect("valid PROXY_FACTORY");
-        let relay_hub: Address = contracts::RELAY_HUB.parse().expect("valid RELAY_HUB");
+        log::info!("Relay address: {}, nonce: {}", relay_address, nonce);
 
-        // Encode transactions as proxy factory call data
-        let proxy_data = encode_proxy_call_data(&transactions);
+        // Wrap all inner transactions in a proxy(...) call targeting the ProxyWalletFactory
+        let proxy_factory: Address = contracts::PROXY_FACTORY.parse().map_err(|_| {
+            AuthError::InvalidAddress {
+                address: contracts::PROXY_FACTORY.to_string(),
+            }
+        })?;
+        let relay_hub: Address = contracts::RELAY_HUB.parse().map_err(|_| {
+            AuthError::InvalidAddress {
+                address: contracts::RELAY_HUB.to_string(),
+            }
+        })?;
 
-        // Gas limit for the inner call through the relay hub.
-        // The relay hub checks gasleft() >= gasLimit before forwarding the call.
-        // The relayer typically provides ~750K gas for the outer tx, so the inner
-        // gasLimit must fit within that minus relay overhead (~100K).
-        // CTF redeemPositions typically uses ~150-250K gas.
+        let proxy_call_data = encode_proxy_call_data(&transactions);
+        // Default gas limit matching the Python client default (500_000).
+        // Must fit within the relay hub's gas budget (~650k total).
         let gas_limit: u64 = 500_000;
 
-        // Sign the proxy transaction
+        // Sign using GSN "rlx:" scheme
         let signature = sign_proxy_transaction(
             &self.signer,
             &eoa,
             &proxy_factory,
-            &proxy_data,
+            &proxy_call_data,
             gas_limit,
             nonce,
             &relay_hub,
@@ -608,21 +612,20 @@ impl RelayerClient {
         )
         .await?;
 
-        // Build request body matching the official TypeScript format
         let req = serde_json::json!({
             "type": "PROXY",
             "from": eoa_str,
             "to": format!("{}", proxy_factory),
             "proxyWallet": format!("{}", proxy_address),
-            "data": format!("0x{}", hex::encode(proxy_data.as_ref())),
+            "data": format!("0x{}", hex::encode(proxy_call_data.as_ref())),
             "nonce": nonce.to_string(),
             "signature": signature,
             "signatureParams": {
                 "gasPrice": "0",
                 "gasLimit": gas_limit.to_string(),
                 "relayerFee": "0",
-                "relayHub": format!("{}", relay_hub),
-                "relay": format!("{}", relay_address)
+                "relayHub": contracts::RELAY_HUB,
+                "relay": relay_address_str
             },
             "metadata": ""
         });
