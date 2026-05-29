@@ -40,6 +40,7 @@
 
 pub mod account_requests;
 pub mod auth;
+pub mod authed_request;
 pub mod activity_requests;
 pub mod clob_endpoints;
 pub mod crypto_price_requests;

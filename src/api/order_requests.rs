@@ -7,12 +7,11 @@ use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
 use typed_builder::TypedBuilder;
 
-use crate::api::auth::{build_l2_headers, get_timestamp};
+use crate::api::auth::get_timestamp;
+use crate::api::authed_request::{send_authed, send_authed_text, Method};
 use crate::api::response_handler::handle_api_response;
-use crate::http_client::get_http_client;
 use crate::models::{Account, Order, OrderType, Side};
 use crate::{market_requests, MarketOrders, OpenOrder, WebserviceRequest, ORDERS};
-use reqwest::header::*;
 
 use super::clob_endpoints::{CLOB_API, CANCEL, GET_ORDER, POST_ORDER};
 
@@ -220,12 +219,8 @@ impl<'a> LimitOrderRequest<'a> {
     pub async fn execute_order(&self, order: Order) -> Result<String> {
         let mut order = order;
 
-        let method = "POST";
         let request_path = POST_ORDER;
-
         let callable_url = format!("{}{}", CLOB_API, request_path);
-
-        let client = get_http_client(Some(request_path));
 
         let l2_timestamp = get_timestamp();
         let now_ms = chrono::Utc::now().timestamp_millis() as u64;
@@ -237,20 +232,18 @@ impl<'a> LimitOrderRequest<'a> {
             self.signer.private_key.as_str(),
         )?;
 
-        let l2_headers = build_l2_headers(self.signer, method, request_path, &body, &l2_timestamp)?;
-
         log::debug!("Signed Order body: {}", &body);
 
         // Send the order placement request
-        let response = client
-            .post(&callable_url)
-            .header(CONTENT_TYPE, "application/json")
-            .header(ACCEPT, "application/json")
-            .headers(l2_headers)
-            .body(body)
-            .send()
-            .await
-            .map_err(|e| crate::api::error::HttpError::from_reqwest(e, callable_url.clone()))?;
+        let response = send_authed(
+            self.signer,
+            Method::Post,
+            request_path,
+            &callable_url,
+            &body,
+            &l2_timestamp,
+        )
+        .await?;
 
         log::trace!("API Call Raw Response: {:?}", response);
 
@@ -284,56 +277,9 @@ impl<'a> LimitOrderRequest<'a> {
     /// * The HTTP request fails
     /// * The API returns an error response
     pub async fn execute(&self) -> Result<String> {
-        // Build and validate order
-        let mut order = self.build().await?;
-
-        let method = "POST";
-        let request_path = POST_ORDER;
-
-        let callable_url = format!("{}{}", CLOB_API, request_path);
-
-        let client = get_http_client(Some(request_path));
-
-        let l2_timestamp = get_timestamp();
-        let now_ms = chrono::Utc::now().timestamp_millis() as u64;
-        order.timestamp = now_ms;
-        let order_salt = ((rand::random::<f64>() * now_ms as f64) as u64).to_string();
-        let body = order.build_order_query_body(
-            order_salt.as_str(),
-            self.signer.api_key.as_str(),
-            self.signer.private_key.as_str(),
-        )?;
-
-        let l2_headers = build_l2_headers(self.signer, method, request_path, &body, &l2_timestamp)?;
-
-        log::debug!("Signed Order body: {}", &body);
-
-        // Send the order placement request
-        let response = client
-            .post(&callable_url)
-            .header(CONTENT_TYPE, "application/json")
-            .header(ACCEPT, "application/json")
-            .headers(l2_headers)
-            .body(body)
-            .send()
-            .await
-            .map_err(|e| crate::api::error::HttpError::from_reqwest(e, callable_url.clone()))?;
-
-        log::trace!("API Call Raw Response: {:?}", response);
-
-        let status = response.status();
-        log::debug!("Order response status: {}", status);
-
-        // Log order side for debugging
-        if !status.is_success() {
-            log::error!(
-                "Error encountered while posting {} order: HTTP status {}",
-                order.side.to_lowercase_str(),
-                status
-            );
-        }
-
-        handle_api_response(response, &callable_url).await
+        // Build and validate, then reuse the shared submission path.
+        let order = self.build().await?;
+        self.execute_order(order).await
     }
 }
 
@@ -383,31 +329,26 @@ impl<'a> CancelOrderRequest<'a> {
     /// * The HTTP request fails
     /// * The API returns an error response
     pub async fn execute(&self) -> Result<String> {
-        let method = "DELETE";
         let request_path = CANCEL;
-
         let callable_url = format!("{}{}", CLOB_API, request_path);
-
-        let client = get_http_client(Some(CANCEL));
 
         // Build request body with orderID
         let body = format!(r#"{{"orderID":"{}"}}"#, self.order_id);
 
         let salt = get_timestamp();
-        let l2_headers = build_l2_headers(self.signer, method, request_path, &body, &salt)?;
 
         log::debug!("Canceling order: {}", self.order_id);
         log::debug!("Cancel request body: {}", &body);
 
-        let response = client
-            .delete(&callable_url)
-            .header(CONTENT_TYPE, "application/json")
-            .header(ACCEPT, "application/json")
-            .headers(l2_headers)
-            .body(body)
-            .send()
-            .await
-            .map_err(|e| crate::api::error::HttpError::from_reqwest(e, callable_url.clone()))?;
+        let response = send_authed(
+            self.signer,
+            Method::Delete,
+            request_path,
+            &callable_url,
+            &body,
+            &salt,
+        )
+        .await?;
 
         log::trace!("API Call Raw Response: {:?}", response);
 
@@ -446,28 +387,13 @@ pub struct OrderStatusResponse {
 /// # Returns
 /// `Ok(OrderStatusResponse)` with the order's current status, or an error.
 pub async fn get_order_by_id(signer: &Account, order_id: &str) -> Result<OrderStatusResponse> {
-    let client = get_http_client(None);
-
-    let method = "GET";
-    let body = "";
-
     // The full path (including order_id) must be signed — Python reference:
     // endpoint = GET_ORDER + order_id; request_path=endpoint → build_hmac_signature
     let signed_path = format!("{}{}", GET_ORDER, order_id);
     let callable_url = format!("{}{}", CLOB_API, signed_path);
 
-    let l2_headers = build_l2_headers(signer, method, &signed_path, body, "")?;
-
-    let response = client
-        .get(&callable_url)
-        .header(CONTENT_TYPE, "application/json")
-        .header(ACCEPT, "application/json")
-        .headers(l2_headers)
-        .send()
-        .await
-        .map_err(|e| crate::api::error::HttpError::from_reqwest(e, callable_url.clone()))?;
-
-    let response_text = handle_api_response(response, &callable_url).await?;
+    let response_text =
+        send_authed_text(signer, Method::Get, &signed_path, &callable_url, "", "").await?;
 
     serde_json::from_str(&response_text).map_err(|e| {
         crate::SerializationError::JsonDeserialize {
@@ -496,25 +422,12 @@ pub async fn get_open_orders_by_market(signer: &Account, market_id: &str) -> Res
 
 /// Fetches raw orders from the CLOB API.
 async fn fetch_raw_orders(signer: &Account, market_id: &str) -> Result<MarketOrders> {
-    let client = get_http_client(None);
-
-    let method = "GET";
     let request_path = ORDERS;
-    let body = "";
 
     let mut callable_url = format!("{}{}", CLOB_API, request_path);
     WebserviceRequest::add_param_to_url(&mut callable_url, "market", market_id);
 
-    let l2_headers = build_l2_headers(signer, method, request_path, body, "")?;
-
-    let response = client
-        .get(&callable_url)
-        .header(CONTENT_TYPE, "application/json")
-        .header(ACCEPT, "application/json")
-        .headers(l2_headers)
-        .send()
-        .await
-        .map_err(|e| crate::api::error::HttpError::from_reqwest(e, callable_url.clone()))?;
+    let response = send_authed(signer, Method::Get, request_path, &callable_url, "", "").await?;
 
     handle_orders_response(response, &callable_url).await
 }
