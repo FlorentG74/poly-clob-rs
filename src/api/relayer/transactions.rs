@@ -10,10 +10,23 @@ use alloy::primitives::{Address, Bytes, B256, U256};
 /// Polygon mainnet contract addresses for Polymarket.
 pub mod contracts {
     /// CTF (Conditional Token Framework) contract address on Polygon.
+    /// LEGACY redeem path: redeeming here with USDC.e collateral pays out raw
+    /// USDC.e, which is NOT Polymarket's current spendable collateral and must be
+    /// manually wrapped/deposited in the UI. Use REDEEM_ROUTER + PUSD_COLLATERAL.
     pub const CTF_CONTRACT: &str = "0x4d97dcd97ec945f40cf65f87097ace5ea0476045";
 
-    /// USDC collateral token contract address on Polygon (Polymarket v2+).
+    /// USDC.e (bridged USDC) — the LEGACY collateral. See PUSD_COLLATERAL.
     pub const PUSD_CONTRACT: &str = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
+
+    /// Polymarket redeem router that settles proceeds directly as spendable pUSD.
+    /// Confirmed on-chain from a working UI redeem (selector + ABI identical to the
+    /// legacy CTF path; only the target contract and collateral differ). Redeeming
+    /// here with PUSD_COLLATERAL credits the proxy wallet with usable pUSD — no
+    /// manual UI deposit needed.
+    pub const REDEEM_ROUTER: &str = "0xada100Db00CA00073811820692005400218fce1F";
+
+    /// pUSD — Polymarket's current spendable collateral token (wraps USDC.e).
+    pub const PUSD_COLLATERAL: &str = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB";
 
     /// CTF Exchange contract address (v2).
     pub const CTF_EXCHANGE: &str = "0xE111180000d2663C0091e4f400237545B87B996B";
@@ -124,18 +137,20 @@ pub fn create_redeem_tx(params: &RedeemParams) -> Result<Transaction> {
         None => vec![U256::from(1), U256::from(2)], // Both outcomes
     };
 
-    // Parse contract addresses
-    let ctf_address: Address = contracts::CTF_CONTRACT
+    // Parse contract addresses. Redeem via the pUSD router so proceeds settle as
+    // spendable pUSD collateral (matches the working UI redeem), NOT the legacy
+    // CTF+USDC.e path which required a manual UI deposit to become usable.
+    let redeem_target: Address = contracts::REDEEM_ROUTER
         .parse()
         .map_err(|_| ValidationError::InvalidParameter {
-            parameter: "CTF_CONTRACT".to_string(),
-            reason: "invalid CTF contract address".to_string(),
+            parameter: "REDEEM_ROUTER".to_string(),
+            reason: "invalid redeem router address".to_string(),
         })?;
-    let collateral_address: Address = contracts::PUSD_CONTRACT
+    let collateral_address: Address = contracts::PUSD_COLLATERAL
         .parse()
         .map_err(|_| ValidationError::InvalidParameter {
-            parameter: "PUSD_CONTRACT".to_string(),
-            reason: "invalid pUSD contract address".to_string(),
+            parameter: "PUSD_COLLATERAL".to_string(),
+            reason: "invalid pUSD collateral address".to_string(),
         })?;
 
     // Encode the function call:
@@ -172,7 +187,7 @@ pub fn create_redeem_tx(params: &RedeemParams) -> Result<Transaction> {
     }
 
     Ok(Transaction {
-        to: ctf_address,
+        to: redeem_target,
         data: Bytes::from(data),
         value: U256::ZERO,
     })
@@ -282,10 +297,10 @@ mod tests {
 
         let tx = create_redeem_tx(&params).unwrap();
 
-        // Verify target address
+        // Verify target address is the pUSD redeem router
         assert_eq!(
             tx.to,
-            contracts::CTF_CONTRACT.parse::<Address>().unwrap()
+            contracts::REDEEM_ROUTER.parse::<Address>().unwrap()
         );
 
         // Verify value is 0
@@ -295,9 +310,9 @@ mod tests {
         let data = tx.data.as_ref();
         assert_eq!(&data[0..4], &selectors::REDEEM_POSITIONS);
 
-        // Verify pUSD address is correctly encoded (after 12 bytes of padding)
+        // Verify pUSD collateral address is correctly encoded (after 12 bytes of padding)
         let collateral_in_data = &data[16..36]; // Skip selector (4) + padding (12)
-        let expected_collateral: Address = contracts::PUSD_CONTRACT.parse().unwrap();
+        let expected_collateral: Address = contracts::PUSD_COLLATERAL.parse().unwrap();
         assert_eq!(collateral_in_data, expected_collateral.as_slice());
 
         // Verify index set is 1 (for outcome_index 0: 1 << 0 = 1)
@@ -333,10 +348,10 @@ mod tests {
             "0x0000000000000000000000000000000000000000000000000000000000000001";
         let tx = create_redeem_all_tx(condition_id).unwrap();
 
-        // Verify it targets the CTF contract
+        // Verify it targets the pUSD redeem router
         assert_eq!(
             tx.to,
-            contracts::CTF_CONTRACT.parse::<Address>().unwrap()
+            contracts::REDEEM_ROUTER.parse::<Address>().unwrap()
         );
 
         // Verify array length is 2 (both outcomes)
