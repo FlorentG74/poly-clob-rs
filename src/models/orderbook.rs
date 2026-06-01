@@ -47,9 +47,13 @@ pub struct OrderBook {
     /// Hash of the order book state
     #[serde(default)]
     pub hash: Option<String>,
-    /// Bid levels (buy orders), sorted by price descending
+    /// Bid levels (buy orders). Ordering is source-dependent: the WS cache sorts
+    /// descending (best first), the REST `/books` endpoint returns ascending (best
+    /// last). Use `best_bid()`, which selects by price, rather than assuming order.
     pub bids: Vec<OrderBookLevel>,
-    /// Ask levels (sell orders), sorted by price ascending
+    /// Ask levels (sell orders). Ordering is source-dependent: the WS cache sorts
+    /// ascending (best first), the REST `/books` endpoint returns descending (best
+    /// last). Use `best_ask()`, which selects by price, rather than assuming order.
     pub asks: Vec<OrderBookLevel>,
     /// Minimum order size for this market
     #[serde(default)]
@@ -72,15 +76,38 @@ pub struct OrderBook {
 
 impl OrderBook {
     /// Returns the best (highest price) bid level.
-    /// Bids are sorted descending (REST convention), so the first element is the highest bid.
+    ///
+    /// Selected by price, not position, so it is correct regardless of how the
+    /// source ordered the levels. This matters because the two ingestion paths
+    /// sort oppositely: the WS cache sorts bids descending (best first), while the
+    /// REST `/books` endpoint returns bids ascending (best last). Relying on
+    /// `.first()` would therefore return the worst bid for REST/replay books.
     pub fn best_bid(&self) -> Option<&OrderBookLevel> {
-        self.bids.first()
+        self.bids
+            .iter()
+            .filter(|l| l.price.is_some())
+            .max_by(|a, b| {
+                a.price
+                    .partial_cmp(&b.price)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
     }
 
     /// Returns the best (lowest price) ask level.
-    /// Asks are sorted ascending (REST convention), so the first element is the lowest ask.
+    ///
+    /// Selected by price, not position, so it is correct regardless of how the
+    /// source ordered the levels (WS sorts asks ascending = best first; REST
+    /// returns asks descending = best last). Zero/negative-priced ghost levels
+    /// are skipped so they can never be picked as the best ask.
     pub fn best_ask(&self) -> Option<&OrderBookLevel> {
-        self.asks.first()
+        self.asks
+            .iter()
+            .filter(|l| l.price.map(|p| p > 0.0).unwrap_or(false))
+            .min_by(|a, b| {
+                a.price
+                    .partial_cmp(&b.price)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
     }
 
     /// Returns the total bid depth (sum of all bid sizes).
@@ -280,13 +307,74 @@ mod tests {
         // Test ask depth: 75.0 + 125.5 = 200.5
         assert!((orderbook.get_ask_depth() - 200.5).abs() < 0.001);
 
-        // Test best bid (first in the descending-sorted list = highest price)
+        // Test best bid (highest price, regardless of level ordering)
         let best_bid = orderbook.best_bid().unwrap();
         assert_eq!(best_bid.price, Some(0.50));
 
-        // Test best ask (first in the ascending-sorted list = lowest price)
+        // Test best ask (lowest price, regardless of level ordering)
         let best_ask = orderbook.best_ask().unwrap();
         assert_eq!(best_ask.price, Some(0.51));
+    }
+
+    /// Regression test for the wrong-side bug: the WS cache sorts bids descending /
+    /// asks ascending (best first), while the REST `/books` endpoint returns bids
+    /// ascending / asks descending (best last). `best_bid`/`best_ask` must select by
+    /// price and return the same top-of-book for both orderings.
+    #[test]
+    fn test_best_bid_ask_independent_of_level_ordering() {
+        let lvl = |p: f32| OrderBookLevel { price: Some(p), size: Some(100.0) };
+
+        // WS ordering: bids descending (best first), asks ascending (best first).
+        let ws = OrderBook {
+            market: "m".into(),
+            asset_id: "a".into(),
+            timestamp: None,
+            hash: None,
+            bids: vec![lvl(0.40), lvl(0.30), lvl(0.10)],
+            asks: vec![lvl(0.41), lvl(0.50), lvl(0.90)],
+            min_order_size: None,
+            tick_size: None,
+            neg_risk: None,
+            ws_best_bid: None,
+            ws_best_ask: None,
+        };
+
+        // REST ordering: bids ascending (best last), asks descending (best last).
+        let rest = OrderBook {
+            bids: vec![lvl(0.10), lvl(0.30), lvl(0.40)],
+            asks: vec![lvl(0.90), lvl(0.50), lvl(0.41)],
+            ..ws.clone()
+        };
+
+        // Both must agree on the true top-of-book.
+        assert_eq!(ws.best_bid().unwrap().price, Some(0.40));
+        assert_eq!(ws.best_ask().unwrap().price, Some(0.41));
+        assert_eq!(rest.best_bid().unwrap().price, Some(0.40));
+        assert_eq!(rest.best_ask().unwrap().price, Some(0.41));
+
+        // And the derived mid must not collapse to 0.50 on the REST ordering.
+        assert!((rest.best_bid_price() - 0.40).abs() < 1e-6);
+        assert!((rest.best_ask_price() - 0.41).abs() < 1e-6);
+    }
+
+    /// A zero-priced ghost ask must never be selected as the best ask.
+    #[test]
+    fn test_best_ask_skips_zero_price_ghost() {
+        let lvl = |p: f32| OrderBookLevel { price: Some(p), size: Some(10.0) };
+        let book = OrderBook {
+            market: "m".into(),
+            asset_id: "a".into(),
+            timestamp: None,
+            hash: None,
+            bids: vec![lvl(0.30)],
+            asks: vec![lvl(0.0), lvl(0.55), lvl(0.60)],
+            min_order_size: None,
+            tick_size: None,
+            neg_risk: None,
+            ws_best_bid: None,
+            ws_best_ask: None,
+        };
+        assert_eq!(book.best_ask().unwrap().price, Some(0.55));
     }
 
     #[test]
