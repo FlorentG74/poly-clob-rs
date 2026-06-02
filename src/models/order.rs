@@ -15,7 +15,7 @@ use std::str::FromStr;
 
 const NAME: &str = "Polymarket CTF Exchange";
 const VERSION: &str = "2";
-use crate::constants::{POLYGON_CHAIN_ID, RAW_UNIT_MULTIPLIER};
+use crate::constants::{MIN_POLY_TOKEN_QUANTITY, POLYGON_CHAIN_ID, RAW_UNIT_MULTIPLIER};
 
 const CHAIN_ID: i32 = POLYGON_CHAIN_ID as i32;
 
@@ -156,14 +156,14 @@ impl Order {
     }
 
     pub fn validate_order(&self) -> Result<()> {
-        //for buy orders, token quantity should be > 5 and USD amount should be >= 1.0
+        //for buy orders, token quantity should be >= MIN_POLY_TOKEN_QUANTITY and USD amount should be >= 1.0
         if self.side == Side::Buy
             && (self.maker_amount <= (RAW_UNIT_MULTIPLIER as i32)
-                || self.taker_amount < 5 * (RAW_UNIT_MULTIPLIER as i32))
+                || self.taker_amount < (MIN_POLY_TOKEN_QUANTITY as i32) * (RAW_UNIT_MULTIPLIER as i32))
         {
             return Err(ValidationError::InvalidAmount {
                 reason: format!(
-                "Buy order validation warning: Token quantity should be > 5 and USD amount should be >= 1.0. Current: maker_amount={}, taker_amount={}",
+                "Buy order validation warning: Token quantity should be >= {MIN_POLY_TOKEN_QUANTITY} and USD amount should be >= 1.0. Current: maker_amount={}, taker_amount={}",
                 self.maker_amount as f64 / RAW_UNIT_MULTIPLIER as f64,
                 self.taker_amount as f64 / RAW_UNIT_MULTIPLIER as f64
             )
