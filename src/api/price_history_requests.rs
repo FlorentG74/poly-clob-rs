@@ -128,7 +128,7 @@ impl<'a> PriceHistoryRequest<'a> {
         }
 
         super::webservice_request::WebserviceRequest::fetch_one::<PriceHistoryResponse>(
-            &client,
+            client,
             &req,
         )
         .await

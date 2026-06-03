@@ -48,7 +48,7 @@ fn generate_values_hash(value: &DynSolValue) -> Result<Vec<u8>> {
                 })?;
                 let x: [u8; 32] = uint8.0.to_be_bytes();
                 let encoded_uint8: [u8; 32] = U256::from_be_slice(&x).to_be_bytes();
-                log::trace!("Result: {:?}", &encoded_uint8);
+                log::trace!("Result: {:?}", encoded_uint8);
                 encoded_values.extend_from_slice(&encoded_uint8);
             }
             "uint256" => {
@@ -123,8 +123,8 @@ pub fn build_l1_signature(
     .concat();
     let eip712_hash = keccak256(&signable_bytes);
 
-    log::trace!("Signable bytes: {:?}", &signable_bytes);
-    log::trace!("Message hash: {:?}", &eip712_hash);
+    log::trace!("Signable bytes: {:?}", signable_bytes);
+    log::trace!("Message hash: {:?}", eip712_hash);
 
     let wallet = PrivateKeySigner::from_str(signer_pk).map_err(|e| AuthError::InvalidPrivateKey {
         message: e.to_string(),

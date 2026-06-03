@@ -232,7 +232,7 @@ impl<'a> LimitOrderRequest<'a> {
             self.signer.private_key.as_str(),
         )?;
 
-        log::debug!("Signed Order body: {}", &body);
+        log::debug!("Signed Order body: {}", body);
 
         // Send the order placement request
         let response = send_authed(
@@ -338,7 +338,7 @@ impl<'a> CancelOrderRequest<'a> {
         let salt = get_timestamp();
 
         log::debug!("Canceling order: {}", self.order_id);
-        log::debug!("Cancel request body: {}", &body);
+        log::debug!("Cancel request body: {}", body);
 
         let response = send_authed(
             self.signer,
