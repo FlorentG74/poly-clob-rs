@@ -3,8 +3,11 @@ use serde::{Deserialize, Serialize};
 
 use super::{ApiResponse, KeysetApiResponse, api_response::deserialize_cursor};
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+// `default` makes deserialization resilient to fields the gamma API omits for some market
+// types (e.g. ladder rungs lack `resolutionSource`). All fields are `Option`, so a missing
+// key becomes `None` instead of a hard "missing field" error.
+#[serde(rename_all = "camelCase", default)]
 pub struct PolyResponseMarket {
     pub id: Option<String>,
     pub question: Option<String>,

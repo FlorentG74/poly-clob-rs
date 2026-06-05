@@ -4,8 +4,11 @@ use super::{ApiResponse, KeysetApiResponse, PolyResponseMarket, api_response::de
 
 pub type EventResponse = Vec<PolyResponseEvent>;
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+// `default` tolerates event-level fields the gamma API omits for some event types — e.g.
+// "what price will X hit" ladder events omit `resolutionSource` (and others) that up/down
+// events always send. Missing keys fall back to type defaults instead of erroring.
+#[serde(rename_all = "camelCase", default)]
 pub struct PolyResponseEvent {
     pub id: String,
     pub ticker: String,
