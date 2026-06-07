@@ -601,7 +601,7 @@ mod tests {
 
         assert_eq!(request.limit, 100);
         assert!(request.cursor.is_none());
-        assert_eq!(request.ascending, false);
+        assert!(!request.ascending);
         assert!(request.id.is_empty());
         assert!(request.slug.is_empty());
         assert!(request.clob_token_ids.is_empty());
@@ -676,7 +676,7 @@ mod tests {
         assert_eq!(request.related_tags, Some(true));
         assert_eq!(request.include_tag, Some(true));
         assert_eq!(request.order, Some("volume,liquidity"));
-        assert_eq!(request.ascending, true);
+        assert!(request.ascending);
         assert_eq!(request.slug.len(), 2);
     }
 

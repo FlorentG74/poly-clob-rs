@@ -321,7 +321,7 @@ mod tests {
         let index_set = U256::from_be_slice(index_set_bytes);
         assert_eq!(index_set, U256::from(1));
 
-        println!("Encoded data: 0x{}", hex::encode(&data));
+        println!("Encoded data: 0x{}", hex::encode(data));
     }
 
     #[test]

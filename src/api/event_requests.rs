@@ -263,7 +263,7 @@ mod tests {
         assert!(req.cursor.is_none());
         assert!(req.slug.is_none());
         assert!(req.closed.is_none());
-        assert_eq!(req.ascending, false);
+        assert!(!req.ascending);
     }
 
     #[test]
