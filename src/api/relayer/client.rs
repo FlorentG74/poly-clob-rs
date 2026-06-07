@@ -595,9 +595,15 @@ impl RelayerClient {
         })?;
 
         let proxy_call_data = encode_proxy_call_data(&transactions);
-        // Default gas limit matching the Python client default (500_000).
-        // Must fit within the relay hub's gas budget (~650k total).
-        let gas_limit: u64 = 500_000;
+        // Gas limit must cover EVERY batched sub-call. A single redeem needs
+        // ~355k; the Polymarket UI scales linearly (~196k per redeem + ~160k
+        // base, e.g. 3 redeems -> ~748k). The old fixed 500_000 fit only one
+        // call, so batches of 2+ ran out of gas inside the relayed call and
+        // failed silently (RelayHub reports RelayedCallFailed while the outer
+        // tx still mines). Scale with the batch size, keeping 500_000 as a floor
+        // (the prior single-call default).
+        let n = transactions.len().max(1) as u64;
+        let gas_limit: u64 = (220_000 * n + 200_000).max(500_000);
 
         // Sign using GSN "rlx:" scheme
         let signature = sign_proxy_transaction(
