@@ -19,6 +19,7 @@
 //! - [`price_requests`] - Price data request builders
 //! - [`tag_requests`] - Tag/category request builders
 //! - [`relayer`] - Polymarket Relayer V2 API client for gasless transactions
+//! - [`bridge`] - Polymarket Bridge API client for cross-chain deposits/withdrawals
 //! - [`utils`] - Utility functions for API interactions
 //!
 //! ## Example
@@ -42,6 +43,7 @@ pub mod account_requests;
 pub mod auth;
 pub mod authed_request;
 pub mod activity_requests;
+pub mod bridge;
 pub mod clob_endpoints;
 pub mod crypto_price_requests;
 pub mod error;
@@ -81,6 +83,14 @@ impl SortDirection {
 
 pub use auth::*;
 pub use activity_requests::*;
+// Explicit (not glob) re-export: avoids colliding the `bridge::{client,endpoints,types}`
+// submodule names with the identically-named submodules glob-exported from `relayer`.
+pub use bridge::{
+    BridgeAddresses, BridgeClient, BridgeErrorResponse, BridgeTransaction, BridgeTransactionStatus,
+    DepositRequest, DepositResponse, FeeBreakdown, QuoteRequest, QuoteResponse, SupportedAsset,
+    SupportedAssetsResponse, Token, TransactionStatusResponse, WithdrawalRequest,
+    WithdrawalResponse, BRIDGE_API,
+};
 pub use clob_endpoints::*;
 pub use crypto_price_requests::*;
 pub use fee_requests::*;
