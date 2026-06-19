@@ -12,7 +12,7 @@
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let books = OrderBooksRequest::builder()
-//!     .token_ids(vec!["token_id_1", "token_id_2"])
+//!     .token_ids(vec!["token_id_1".to_string(), "token_id_2".to_string()])
 //!     .build()
 //!     .execute()
 //!     .await?;
@@ -35,7 +35,7 @@
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let books = OrderBooksRequest::builder()
-//!     .token_ids_with_side(vec![("token_id_1", Some(Side::Buy))])
+//!     .token_ids_with_side(vec![("token_id_1".to_string(), Some(Side::Buy))])
 //!     .build()
 //!     .execute()
 //!     .await?;
@@ -96,7 +96,7 @@ struct OrderBookQueryItem {
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let books = OrderBooksRequest::builder()
-///     .token_ids(vec!["token_id_1", "token_id_2"])
+///     .token_ids(vec!["token_id_1".to_string(), "token_id_2".to_string()])
 ///     .build()
 ///     .execute()
 ///     .await?;
@@ -110,22 +110,22 @@ struct OrderBookQueryItem {
 /// # }
 /// ```
 #[derive(TypedBuilder)]
-pub struct OrderBooksRequest<'a> {
+pub struct OrderBooksRequest {
     /// Token IDs to query (without side filter).
     ///
     /// Use this for simple queries where you want both bid and ask data.
     #[builder(default, setter(into))]
-    pub token_ids: Vec<&'a str>,
+    pub token_ids: Vec<String>,
 
     /// Token IDs with optional side filters.
     ///
     /// Use this when you need to specify a side filter for certain tokens.
     /// The side filter is optional per token.
     #[builder(default)]
-    pub token_ids_with_side: Vec<(&'a str, Option<Side>)>,
+    pub token_ids_with_side: Vec<(String, Option<Side>)>,
 }
 
-impl<'a> OrderBooksRequest<'a> {
+impl OrderBooksRequest {
     /// Executes the order books request.
     ///
     /// # Returns
@@ -147,7 +147,7 @@ impl<'a> OrderBooksRequest<'a> {
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let books = OrderBooksRequest::builder()
-    ///     .token_ids(vec!["token_id"])
+    ///     .token_ids(vec![String::from("token_id")])
     ///     .build()
     ///     .execute()
     ///     .await?;
@@ -163,7 +163,7 @@ impl<'a> OrderBooksRequest<'a> {
         // Add token_ids (without side filter)
         for token_id in &self.token_ids {
             query_items.push(OrderBookQueryItem {
-                token_id: token_id.to_string(),
+                token_id: String::from(token_id),
                 side: None,
             });
         }
@@ -171,21 +171,21 @@ impl<'a> OrderBooksRequest<'a> {
         // Add token_ids_with_side
         for (token_id, side) in &self.token_ids_with_side {
             query_items.push(OrderBookQueryItem {
-                token_id: token_id.to_string(),
+                token_id: String::from(token_id),
                 side: side.map(|s| s.to_string()),
             });
         }
 
         if query_items.is_empty() {
             return Err(ValidationError::InvalidParameter {
-                parameter: "token_ids".to_string(),
+                parameter: String::from("token_ids"),
                 reason: "OrderBooksRequest requires at least one token_id".to_string(),
             }.into());
         }
 
         if query_items.len() > 500 {
             return Err(ValidationError::InvalidParameter {
-                parameter: "token_ids".to_string(),
+                parameter: String::from("token_ids"),
                 reason: format!("OrderBooksRequest accepts a maximum of 500 items, got {}", query_items.len()),
             }.into());
         }
@@ -264,7 +264,7 @@ impl<'a> OrderBooksRequest<'a> {
 /// ```
 pub async fn fetch_order_books(token_ids: &[&str]) -> Result<OrderBooksResponse> {
     OrderBooksRequest::builder()
-        .token_ids(token_ids.to_vec())
+        .token_ids(token_ids.iter().map(|s| s.to_string()).collect::<Vec<String>>())
         .build()
         .execute()
         .await
@@ -289,7 +289,7 @@ mod tests {
     #[test]
     fn test_orderbooks_request_with_token_ids() {
         let request = OrderBooksRequest::builder()
-            .token_ids(vec!["token1", "token2", "token3"])
+            .token_ids(vec!["token1".to_string(), "token2".to_string(), "token3".to_string()])
             .build();
 
         assert_eq!(request.token_ids.len(), 3);
@@ -302,16 +302,16 @@ mod tests {
     fn test_orderbooks_request_with_side() {
         let request = OrderBooksRequest::builder()
             .token_ids_with_side(vec![
-                ("token1", Some(Side::Buy)),
-                ("token2", Some(Side::Sell)),
-                ("token3", None),
+                ("token1".to_string(), Some(Side::Buy)),
+                ("token2".to_string(), Some(Side::Sell)),
+                ("token3".to_string(), None),
             ])
             .build();
 
         assert_eq!(request.token_ids_with_side.len(), 3);
-        assert_eq!(request.token_ids_with_side[0], ("token1", Some(Side::Buy)));
-        assert_eq!(request.token_ids_with_side[1], ("token2", Some(Side::Sell)));
-        assert_eq!(request.token_ids_with_side[2], ("token3", None));
+        assert_eq!(request.token_ids_with_side[0], ("token1".to_string(), Some(Side::Buy)));
+        assert_eq!(request.token_ids_with_side[1], ("token2".to_string(), Some(Side::Sell)));
+        assert_eq!(request.token_ids_with_side[2], ("token3".to_string(), None));
     }
 
     #[test]
@@ -422,9 +422,8 @@ mod tests {
         println!("Found {} token IDs: {:?}", token_ids.len(), token_ids);
 
         // Step 4: Query order books for all token IDs
-        let token_id_refs: Vec<&str> = token_ids.iter().map(|s| s.as_str()).collect();
         let books = OrderBooksRequest::builder()
-            .token_ids(token_id_refs)
+            .token_ids(token_ids.clone())
             .build()
             .execute()
             .await

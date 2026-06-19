@@ -139,7 +139,7 @@ impl<'a> SeriesEventsRequest<'a> {
 /// # }
 /// ```
 #[derive(TypedBuilder)]
-pub struct EventsRequest<'a> {
+pub struct EventsRequest {
     /// Number of events per page (default: 100)
     #[builder(default = 100)]
     pub limit: i32,
@@ -150,7 +150,7 @@ pub struct EventsRequest<'a> {
     // Sorting
     /// Field to sort results by
     #[builder(default, setter(into))]
-    pub order: Option<&'a str>,
+    pub order: Option<String>,
     /// Sort in ascending order (default: false/descending)
     #[builder(default = false)]
     pub ascending: bool,
@@ -158,10 +158,10 @@ pub struct EventsRequest<'a> {
     // Filters
     /// Filter by event slug
     #[builder(default, setter(into))]
-    pub slug: Option<&'a str>,
+    pub slug: Option<String>,
     /// Filter by event title (partial match)
     #[builder(default, setter(into))]
-    pub title: Option<&'a str>,
+    pub title: Option<String>,
     /// Filter by closed status
     #[builder(default)]
     pub closed: Option<bool>,
@@ -182,7 +182,7 @@ pub struct EventsRequest<'a> {
     pub tag_id: Option<i32>,
 }
 
-impl<'a> EventsRequest<'a> {
+impl EventsRequest {
     /// Executes a single page fetch against `/events/keyset`.
     ///
     /// Returns a [`KeysetEventsResponse`] whose `next_cursor` field indicates
@@ -203,17 +203,17 @@ impl<'a> EventsRequest<'a> {
             web_service_request.add_arg("limit".to_string(), self.limit.to_string());
         }
 
-        if let Some(order) = self.order {
+        if let Some(order) = self.order.as_deref() {
             web_service_request.add_arg("order".to_string(), order.to_string());
         }
         if self.ascending {
             web_service_request.add_arg("ascending".to_string(), "true".to_string());
         }
 
-        if let Some(slug) = self.slug {
+        if let Some(slug) = self.slug.as_deref() {
             web_service_request.add_arg("slug".to_string(), slug.to_string());
         }
-        if let Some(title) = self.title {
+        if let Some(title) = self.title.as_deref() {
             web_service_request.add_arg("title".to_string(), title.to_string());
         }
         if let Some(closed) = self.closed {
@@ -282,17 +282,17 @@ mod tests {
     #[test]
     fn test_events_keyset_request_with_filters() {
         let req = EventsRequest::builder()
-            .slug(Some("btc-up-or-down-15m"))
+            .slug(Some("btc-up-or-down-15m".to_string()))
             .active(Some(true))
             .volume_min(Some(1000.0))
-            .order("volume")
+            .order("volume".to_string())
             .ascending(true)
             .build();
 
-        assert_eq!(req.slug, Some("btc-up-or-down-15m"));
+        assert_eq!(req.slug.as_deref(), Some("btc-up-or-down-15m"));
         assert_eq!(req.active, Some(true));
         assert_eq!(req.volume_min, Some(1000.0));
-        assert_eq!(req.order, Some("volume"));
+        assert_eq!(req.order.as_deref(), Some("volume"));
         assert!(req.ascending);
     }
 

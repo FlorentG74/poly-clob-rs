@@ -51,7 +51,7 @@
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let page = MarketsRequest::builder()
-//!     .condition_ids(vec!["0x123", "0x456"])
+//!     .condition_ids(vec!["0x123".to_string(), "0x456".to_string()])
 //!     .build()
 //!     .execute()
 //!     .await?;
@@ -251,7 +251,7 @@ impl<'a> MarketBySlugRequest<'a> {
 /// # }
 /// ```
 #[derive(TypedBuilder)]
-pub struct MarketsRequest<'a> {
+pub struct MarketsRequest {
     // Pagination
     /// Maximum number of markets per page
     #[builder(default = 100)]
@@ -263,7 +263,7 @@ pub struct MarketsRequest<'a> {
     // Sorting
     /// Comma-separated list of fields to order by (e.g., "volume,liquidity")
     #[builder(default, setter(into))]
-    pub order: Option<&'a str>,
+    pub order: Option<String>,
     /// Sort in ascending order (default: false/descending)
     #[builder(default = false)]
     pub ascending: bool,
@@ -274,19 +274,19 @@ pub struct MarketsRequest<'a> {
     pub id: Vec<i64>,
     /// Filter by market slugs
     #[builder(default, setter(into))]
-    pub slug: Vec<&'a str>,
+    pub slug: Vec<String>,
     /// Filter by CLOB token IDs
     #[builder(default, setter(into))]
-    pub clob_token_ids: Vec<&'a str>,
+    pub clob_token_ids: Vec<String>,
     /// Filter by condition IDs
     #[builder(default, setter(into))]
-    pub condition_ids: Vec<&'a str>,
+    pub condition_ids: Vec<String>,
     /// Filter by market maker addresses
     #[builder(default, setter(into))]
-    pub market_maker_address: Vec<&'a str>,
+    pub market_maker_address: Vec<String>,
     /// Filter by question IDs
     #[builder(default, setter(into))]
-    pub question_ids: Vec<&'a str>,
+    pub question_ids: Vec<String>,
 
     // Numeric filters
     /// Minimum liquidity
@@ -308,16 +308,16 @@ pub struct MarketsRequest<'a> {
     // Date filters
     /// Minimum event start date (ISO 8601 format)
     #[builder(default, setter(into))]
-    pub start_date_min: Option<&'a str>,
+    pub start_date_min: Option<String>,
     /// Maximum event start date (ISO 8601 format)
     #[builder(default, setter(into))]
-    pub start_date_max: Option<&'a str>,
+    pub start_date_max: Option<String>,
     /// Minimum event end date (ISO 8601 format)
     #[builder(default, setter(into))]
-    pub end_date_min: Option<&'a str>,
+    pub end_date_min: Option<String>,
     /// Maximum event end date (ISO 8601 format)
     #[builder(default, setter(into))]
-    pub end_date_max: Option<&'a str>,
+    pub end_date_max: Option<String>,
 
     // Boolean filters
     /// Filter by closed status
@@ -339,16 +339,16 @@ pub struct MarketsRequest<'a> {
     pub tag_id: Option<i32>,
     /// Filter by UMA resolution status
     #[builder(default, setter(into))]
-    pub uma_resolution_status: Option<&'a str>,
+    pub uma_resolution_status: Option<String>,
     /// Filter by game ID
     #[builder(default, setter(into))]
-    pub game_id: Option<&'a str>,
+    pub game_id: Option<String>,
     /// Filter by sports market types
     #[builder(default)]
     pub sports_market_types: Vec<SportsMarketType>,
 }
 
-impl<'a> MarketsRequest<'a> {
+impl MarketsRequest {
     /// Executes a single page fetch against `/markets/keyset`.
     ///
     /// Returns a [`KeysetMarketsResponse`] whose `next_cursor` field indicates
@@ -371,7 +371,7 @@ impl<'a> MarketsRequest<'a> {
         }
 
         // Sorting
-        if let Some(order) = self.order {
+        if let Some(order) = self.order.as_deref() {
             web_service_request.add_arg("order".to_string(), order.to_string());
         }
         if self.ascending {
@@ -419,16 +419,16 @@ impl<'a> MarketsRequest<'a> {
         }
 
         // Date filters
-        if let Some(date) = self.start_date_min {
+        if let Some(date) = self.start_date_min.as_deref() {
             web_service_request.add_arg("start_date_min".to_string(), date.to_string());
         }
-        if let Some(date) = self.start_date_max {
+        if let Some(date) = self.start_date_max.as_deref() {
             web_service_request.add_arg("start_date_max".to_string(), date.to_string());
         }
-        if let Some(date) = self.end_date_min {
+        if let Some(date) = self.end_date_min.as_deref() {
             web_service_request.add_arg("end_date_min".to_string(), date.to_string());
         }
-        if let Some(date) = self.end_date_max {
+        if let Some(date) = self.end_date_max.as_deref() {
             web_service_request.add_arg("end_date_max".to_string(), date.to_string());
         }
 
@@ -450,13 +450,13 @@ impl<'a> MarketsRequest<'a> {
         if let Some(tag_id) = self.tag_id {
             web_service_request.add_arg("tag_id".to_string(), tag_id.to_string());
         }
-        if let Some(status) = self.uma_resolution_status {
+        if let Some(status) = self.uma_resolution_status.as_deref() {
             web_service_request.add_arg(
                 "uma_resolution_status".to_string(),
                 status.to_string(),
             );
         }
-        if let Some(game_id) = self.game_id {
+        if let Some(game_id) = self.game_id.as_deref() {
             web_service_request.add_arg("game_id".to_string(), game_id.to_string());
         }
         for market_type in &self.sports_market_types {
@@ -513,10 +513,8 @@ pub async fn map_multiple_market_by_condition_ids_ws(
 ) -> Result<HashMap<String, PolyResponseMarket>> {
     let mut markets_map: HashMap<String, PolyResponseMarket> = HashMap::new();
 
-    let condition_id_refs: Vec<&str> = condition_ids.iter().map(|s| s.as_str()).collect();
-
     let markets = MarketsRequest::builder()
-        .condition_ids(condition_id_refs)
+        .condition_ids(condition_ids.to_vec())
         .build()
         .execute()
         .await?;
@@ -529,10 +527,10 @@ pub async fn map_multiple_market_by_condition_ids_ws(
 
     // The gamma API excludes closed markets by default (closed=false). Retry any missing
     // condition_ids with closed=true to pick up resolved markets.
-    let missing: Vec<&str> = condition_ids
+    let missing: Vec<String> = condition_ids
         .iter()
         .filter(|id| !markets_map.contains_key(*id))
-        .map(|s| s.as_str())
+        .map(|s| s.to_string())
         .collect();
 
     if !missing.is_empty() {
@@ -647,7 +645,7 @@ mod tests {
             .closed(Some(false))
             .volume_num_min(Some(1000.0))
             .volume_num_max(Some(5000.0))
-            .condition_ids(vec!["0x123", "0x456"])
+            .condition_ids(vec!["0x123".to_string(), "0x456".to_string()])
             .tag_id(Some(42))
             .build();
 
@@ -667,15 +665,15 @@ mod tests {
             .closed(Some(false))
             .related_tags(Some(true))
             .include_tag(Some(true))
-            .order("volume,liquidity")
+            .order("volume,liquidity".to_string())
             .ascending(true)
-            .slug(vec!["market-1", "market-2"])
+            .slug(vec!["market-1".to_string(), "market-2".to_string()])
             .build();
 
         assert_eq!(request.closed, Some(false));
         assert_eq!(request.related_tags, Some(true));
         assert_eq!(request.include_tag, Some(true));
-        assert_eq!(request.order, Some("volume,liquidity"));
+        assert_eq!(request.order.as_deref(), Some("volume,liquidity"));
         assert!(request.ascending);
         assert_eq!(request.slug.len(), 2);
     }
