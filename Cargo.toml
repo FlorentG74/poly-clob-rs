@@ -22,6 +22,7 @@ rust_decimal = { workspace = true }
 alloy = { workspace = true, features = ["dyn-abi", "signer-local"] }
 
 reqwest = { workspace = true }
+reqwest-websocket = "0.6.0"
 tokio = { version = "1", default-features = false, features = ["macros", "rt-multi-thread", "time"] }
 dotenvy = "0.15"
 hex = { version = "0.4.3" }

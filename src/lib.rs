@@ -109,6 +109,7 @@
 pub mod api;
 pub mod models;
 pub mod constants;
+pub mod ws;
 
 // Re-export constants at crate root for convenience
 pub use constants::*;
