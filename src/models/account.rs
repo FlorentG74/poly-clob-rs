@@ -6,8 +6,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "PascalCase")]
 pub enum AccountType {
     PaperAccount,
-    PolymarketAccount,
-    BinanceAccount,
+    PolymarketAccount
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -122,30 +121,6 @@ impl Account {
             api_secret: Default::default(),
             api_passphrase: Default::default(),
             account_type: AccountType::PaperAccount,
-            telegram_chat_id: telegram.chat_id,
-            telegram_bot_token: telegram.bot_token,
-            builder_api_key: None,
-            builder_api_secret: None,
-            builder_api_passphrase: None,
-            signature_type: SignatureType::PolyProxy,
-        }
-    }
-
-    pub fn load_binance_account(account_name: &str) -> Self {
-        use dotenvy::dotenv;
-
-        dotenv().ok();
-
-        let telegram = load_telegram_config();
-
-        Account {
-            poly_address: account_name.to_string(),
-            pub_key: Default::default(),
-            private_key: Default::default(),
-            api_key: Default::default(),
-            api_secret: Default::default(),
-            api_passphrase: Default::default(),
-            account_type: AccountType::BinanceAccount,
             telegram_chat_id: telegram.chat_id,
             telegram_bot_token: telegram.bot_token,
             builder_api_key: None,
