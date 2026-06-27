@@ -8,8 +8,15 @@ use reqwest::{Response, StatusCode};
 
 use super::error::{ApiError, HttpError, Result};
 
-/// Default retry delay for rate limiting (in seconds).
+/// Default retry delay for rate limiting (in seconds), used when the server sends no
+/// usable `Retry-After` header.
 pub const DEFAULT_RATE_LIMIT_DELAY_SECS: u64 = 5;
+
+/// Minimum retry delay enforced on any rate-limit (429) response. Polymarket returns
+/// `Retry-After: 0` on its 429s, which would otherwise produce a zero-delay retry loop
+/// that hammers the endpoint (and, with no backoff, keeps the limiter tripped). Flooring
+/// here guarantees every 429 backs off by at least this much regardless of the header.
+pub const MIN_RATE_LIMIT_DELAY_SECS: u64 = 1;
 
 /// Handle HTTP API responses with consistent error handling.
 ///
@@ -220,11 +227,14 @@ fn parse_retry_after(response: &Response) -> (Duration, Option<String>) {
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
 
+    // Absent/unparseable header -> default; then floor so a server-sent `Retry-After: 0`
+    // (Polymarket does this) can never yield a zero-delay retry that hammers the endpoint.
     let duration = header_value
         .as_ref()
         .and_then(|v| v.parse::<u64>().ok())
         .map(Duration::from_secs)
-        .unwrap_or(Duration::from_secs(DEFAULT_RATE_LIMIT_DELAY_SECS));
+        .unwrap_or(Duration::from_secs(DEFAULT_RATE_LIMIT_DELAY_SECS))
+        .max(Duration::from_secs(MIN_RATE_LIMIT_DELAY_SECS));
 
     (duration, header_value)
 }
