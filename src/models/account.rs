@@ -1,5 +1,5 @@
+use crate::api::error::{AuthError, Result};
 use crate::api::relayer::SignatureType;
-use crate::api::error::{Result, AuthError};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -78,18 +78,24 @@ impl Account {
             .unwrap_or(SignatureType::PolyProxy);
 
         Ok(Account {
-            poly_address: env::var("POLY_ADDRESS")
-                .map_err(|_| AuthError::MissingEnvVar { var_name: "POLY_ADDRESS".to_string() })?,
-            pub_key: env::var("PUB_KEY")
-                .map_err(|_| AuthError::MissingEnvVar { var_name: "PUB_KEY".to_string() })?,
-            private_key: env::var("PRIVATE_KEY")
-                .map_err(|_| AuthError::MissingEnvVar { var_name: "PRIVATE_KEY".to_string() })?,
-            api_key: env::var("API_KEY")
-                .map_err(|_| AuthError::MissingEnvVar { var_name: "API_KEY".to_string() })?,
-            api_secret: env::var("API_SECRET")
-                .map_err(|_| AuthError::MissingEnvVar { var_name: "API_SECRET".to_string() })?,
-            api_passphrase: env::var("API_PASSPHRASE")
-                .map_err(|_| AuthError::MissingEnvVar { var_name: "API_PASSPHRASE".to_string() })?,
+            poly_address: env::var("POLY_ADDRESS").map_err(|_| AuthError::MissingEnvVar {
+                var_name: "POLY_ADDRESS".to_string(),
+            })?,
+            pub_key: env::var("PUB_KEY").map_err(|_| AuthError::MissingEnvVar {
+                var_name: "PUB_KEY".to_string(),
+            })?,
+            private_key: env::var("PRIVATE_KEY").map_err(|_| AuthError::MissingEnvVar {
+                var_name: "PRIVATE_KEY".to_string(),
+            })?,
+            api_key: env::var("API_KEY").map_err(|_| AuthError::MissingEnvVar {
+                var_name: "API_KEY".to_string(),
+            })?,
+            api_secret: env::var("API_SECRET").map_err(|_| AuthError::MissingEnvVar {
+                var_name: "API_SECRET".to_string(),
+            })?,
+            api_passphrase: env::var("API_PASSPHRASE").map_err(|_| AuthError::MissingEnvVar {
+                var_name: "API_PASSPHRASE".to_string(),
+            })?,
             account_type: AccountType::PolymarketAccount,
             telegram_chat_id: telegram.chat_id,
             telegram_bot_token: telegram.bot_token,
@@ -100,12 +106,13 @@ impl Account {
         })
     }
 
-    pub fn load_paper_account(account_name: &str) -> Self {
-        use dotenvy::dotenv;
+    pub fn load_paper_account(account_name: &str, with_telegram: bool) -> Self {
+        let telegram = if with_telegram {
+            load_telegram_config()
 
-        dotenv().ok();
-
-        let telegram = load_telegram_config();
+        } else {
+            TelegramConfig { chat_id: None, bot_token: None }
+        };
 
         Account {
             poly_address: account_name.to_string(),
@@ -150,7 +157,11 @@ impl Account {
 
     /// Returns builder credentials if all required fields are present.
     pub fn get_builder_credentials(&self) -> Option<crate::api::relayer::BuilderCredentials> {
-        match (&self.builder_api_key, &self.builder_api_secret, &self.builder_api_passphrase) {
+        match (
+            &self.builder_api_key,
+            &self.builder_api_secret,
+            &self.builder_api_passphrase,
+        ) {
             (Some(key), Some(secret), Some(passphrase)) => {
                 Some(crate::api::relayer::BuilderCredentials::new(
                     key.clone(),
