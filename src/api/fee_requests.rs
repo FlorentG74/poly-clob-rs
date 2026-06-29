@@ -56,10 +56,10 @@ mod tests {
             .expect("Failed to fetch markets");
 
         let market = markets.data.first().expect("No markets returned");
-        let clob_token_ids_str = market.clob_token_ids.as_ref().expect("No CLOB token IDs");
-        let token_ids: Vec<String> =
-            serde_json::from_str(clob_token_ids_str).expect("Failed to parse token IDs");
-        let token_id = token_ids.first().expect("Token IDs array is empty");
+        let token_id = market
+            .clob_token_ids
+            .first()
+            .expect("Token IDs array is empty");
 
         let fee_rate = get_fee_rate(token_id).await.expect("Failed to fetch fee rate");
         assert!(fee_rate.base_fee >= 0, "Fee rate should be non-negative");

@@ -399,23 +399,9 @@ mod tests {
         println!("Event has {} markets", full_event.markets.len());
 
         // Extract token IDs from all markets
-        // Note: clob_token_ids is a JSON-encoded array string like "[\"123\", \"456\"]"
         let mut token_ids: Vec<String> = Vec::new();
         for market in &full_event.markets {
-            if let Some(ids_str) = &market.clob_token_ids {
-                // Try to parse as JSON array first
-                if let Ok(parsed) = serde_json::from_str::<Vec<String>>(ids_str) {
-                    token_ids.extend(parsed);
-                } else {
-                    // Fallback to comma-separated parsing
-                    for id in ids_str.split(',') {
-                        let trimmed = id.trim();
-                        if !trimmed.is_empty() {
-                            token_ids.push(trimmed.to_string());
-                        }
-                    }
-                }
-            }
+            token_ids.extend(market.clob_token_ids.iter().cloned());
         }
 
         assert!(!token_ids.is_empty(), "No token IDs found in event markets");

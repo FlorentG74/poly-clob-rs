@@ -1,7 +1,47 @@
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use super::{ApiResponse, KeysetApiResponse, api_response::deserialize_cursor};
+
+/// The gamma API encodes `outcomes` / `outcomePrices` / `clobTokenIds` as a JSON
+/// *string* containing a JSON array, e.g. `"[\"Up\",\"Down\"]"`. We parse that once
+/// here, at the serde boundary, so downstream code holds typed values and never
+/// re-parses per access. A missing/null/empty field yields an empty Vec.
+fn de_json_string_to_string_vec<'de, D>(de: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let opt = Option::<String>::deserialize(de)?;
+    match opt.as_deref().map(str::trim) {
+        Some(s) if !s.is_empty() => serde_json::from_str(s).map_err(serde::de::Error::custom),
+        _ => Ok(Vec::new()),
+    }
+}
+
+/// Like [`de_json_string_to_string_vec`] but for prices. The inner array elements
+/// arrive as either bare numbers (`[0.35, 0.65]`) or quoted strings
+/// (`["0.55","0.45"]`) depending on the endpoint, so coerce both to `f64`.
+fn de_json_string_to_f64_vec<'de, D>(de: D) -> Result<Vec<f64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let opt = Option::<String>::deserialize(de)?;
+    let Some(s) = opt.as_deref().map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(Vec::new());
+    };
+    let values: Vec<serde_json::Value> =
+        serde_json::from_str(s).map_err(serde::de::Error::custom)?;
+    values
+        .into_iter()
+        .map(|v| match v {
+            serde_json::Value::Number(n) => n
+                .as_f64()
+                .ok_or_else(|| serde::de::Error::custom("price not representable as f64")),
+            serde_json::Value::String(s) => s.trim().parse::<f64>().map_err(serde::de::Error::custom),
+            other => Err(serde::de::Error::custom(format!("unexpected price element: {other}"))),
+        })
+        .collect()
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 // `default` makes deserialization resilient to fields the gamma API omits for some market
@@ -20,8 +60,10 @@ pub struct PolyResponseMarket {
     pub image: Option<String>,
     pub icon: Option<String>,
     pub description: Option<String>,
-    pub outcomes: Option<String>,
-    pub outcome_prices: Option<String>,
+    #[serde(deserialize_with = "de_json_string_to_string_vec")]
+    pub outcomes: Vec<String>,
+    #[serde(deserialize_with = "de_json_string_to_f64_vec")]
+    pub outcome_prices: Vec<f64>,
     pub volume: Option<String>,
     pub active: Option<bool>,
     pub closed: Option<bool>,
@@ -48,7 +90,8 @@ pub struct PolyResponseMarket {
     pub has_reviewed_dates: Option<bool>,
     #[serde(rename = "volume24hr")]
     pub volume24_hr: Option<f64>,
-    pub clob_token_ids: Option<String>,
+    #[serde(deserialize_with = "de_json_string_to_string_vec")]
+    pub clob_token_ids: Vec<String>,
     pub uma_bond: Option<String>,
     pub uma_reward: Option<String>,
     #[serde(rename = "volume24hrClob")]
