@@ -1,7 +1,7 @@
 [package]
 name = "poly-clob-rs"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 authors = ["Florent <FlorentG74@proton.me>"]
 description = "A Rust client library for the Polymarket CLOB (Central Limit Order Book) API"
 license = "MIT OR Apache-2.0"

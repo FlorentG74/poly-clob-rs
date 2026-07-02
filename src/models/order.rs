@@ -279,7 +279,7 @@ mod tests {
 
     /// Helper macro to create a test order with common fields
     macro_rules! test_order {
-        ($side:expr, $order_type:expr) => {
+        ($side:expr_2021, $order_type:expr_2021) => {
             Order::builder()
                 .maker(TEST_MAKER)
                 .signer(TEST_MAKER)
