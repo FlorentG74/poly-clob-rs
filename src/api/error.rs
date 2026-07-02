@@ -183,22 +183,6 @@ impl ClobError {
         }
     }
 
-    /// Returns true if this is an authentication or authorization error.
-    ///
-    /// This includes both auth errors (missing credentials, invalid keys)
-    /// and authorization errors (401, 403).
-    pub fn is_auth_error(&self) -> bool {
-        matches!(self, ClobError::Auth(_) | ClobError::Api(ApiError::Unauthorized { .. }) | ClobError::Api(ApiError::Forbidden { .. }))
-    }
-
-    /// Returns true if this error indicates a client-side bug or invalid input.
-    ///
-    /// These errors typically should not be retried and may indicate
-    /// bugs in the calling code.
-    pub fn is_client_error(&self) -> bool {
-        matches!(self, ClobError::Validation(_) | ClobError::Api(ApiError::BadRequest { .. }) | ClobError::Api(ApiError::NotFound { .. }) | ClobError::Serialization(_) | ClobError::NotImplemented { .. })
-    }
-
     /// Returns true if this is a recoverable order error.
     ///
     /// Recoverable order errors are temporary conditions where the strategy can skip
@@ -843,18 +827,6 @@ mod tests {
     #[test]
     fn unauthorized_retry_after_is_none() {
         assert_eq!(unauthorized().retry_after(), None);
-    }
-
-    // --- is_auth_error ---
-
-    #[test]
-    fn unauthorized_is_auth_error() {
-        assert!(unauthorized().is_auth_error());
-    }
-
-    #[test]
-    fn rate_limited_is_not_auth_error() {
-        assert!(!rate_limited().is_auth_error());
     }
 
     // --- is_recoverable_order_error ---

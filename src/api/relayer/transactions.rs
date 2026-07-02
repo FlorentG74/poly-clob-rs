@@ -193,25 +193,6 @@ pub fn create_redeem_tx(params: &RedeemParams) -> Result<Transaction> {
     })
 }
 
-/// Creates a transaction to redeem all positions (both outcomes) from a resolved market.
-///
-/// This is useful when you hold tokens for both outcomes and want to redeem them all
-/// in a single transaction.
-///
-/// # Arguments
-///
-/// * `condition_id` - The condition ID of the market.
-///
-/// # Returns
-///
-/// A single `Transaction` struct for redeeming both outcomes with indexSets [1, 2].
-pub fn create_redeem_all_tx(condition_id: &str) -> Result<Transaction> {
-    create_redeem_tx(&RedeemParams {
-        condition_id: condition_id.to_string(),
-        outcome_index: None, // Redeem both outcomes
-    })
-}
-
 /// Encode transactions as a call to the ProxyWalletFactory's `proxy` function.
 ///
 /// The proxy function signature is:
@@ -343,10 +324,14 @@ mod tests {
     }
 
     #[test]
-    fn test_create_redeem_all_tx() {
+    fn test_create_redeem_tx_both_outcomes() {
         let condition_id =
             "0x0000000000000000000000000000000000000000000000000000000000000001";
-        let tx = create_redeem_all_tx(condition_id).unwrap();
+        let tx = create_redeem_tx(&RedeemParams {
+            condition_id: condition_id.to_string(),
+            outcome_index: None, // both outcomes => index sets [1, 2]
+        })
+        .unwrap();
 
         // Verify it targets the pUSD redeem router
         assert_eq!(

@@ -46,34 +46,6 @@ impl PolyResponseEventSeries {
         self.sorted_events().into_iter().find(|e| e.end_date > now)
     }
 
-    /// Derives the event window duration in seconds from the gap between the first two
-    /// consecutive events. Returns `None` when the series contains fewer than two events.
-    pub fn event_duration_secs(&self) -> Option<i64> {
-        let sorted = self.sorted_events();
-        sorted
-            .windows(2)
-            .map(|w| (w[1].end_date - w[0].end_date).num_seconds())
-            .find(|&d| d > 0)
-    }
-
-    /// Returns the start timestamp (Unix seconds) of the currently live event, computed as
-    /// `end_date − event_duration`. This is the value expected by `CryptoPriceRequest` as
-    /// `event_start_time`.
-    ///
-    /// Returns `None` if there is no active event or if the duration cannot be determined.
-    pub fn current_event_start_ts(&self) -> Option<i64> {
-        let sorted = self.sorted_events();
-        let now = Utc::now();
-
-        // Derive duration from first consecutive pair (all gaps should be equal).
-        let duration = sorted
-            .windows(2)
-            .map(|w| (w[1].end_date - w[0].end_date).num_seconds())
-            .find(|&d| d > 0)?;
-
-        let current = sorted.into_iter().find(|e| e.end_date > now)?;
-        Some(current.end_date.timestamp() - duration)
-    }
 }
 
 // ApiResponse implementations

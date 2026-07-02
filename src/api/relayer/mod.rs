@@ -80,7 +80,7 @@ pub use auth::{BuilderCredentials, derive_proxy_address, derive_safe_address, si
 pub use client::RelayerClient;
 pub use crate::constants::POLYGON_CHAIN_ID;
 pub use endpoints::RELAYER_API;
-pub use transactions::{contracts, create_redeem_tx, create_redeem_all_tx, encode_proxy_call_data, RedeemParams};
+pub use transactions::{contracts, create_redeem_tx, encode_proxy_call_data, RedeemParams};
 pub use types::{
     CallType, DeployedResponse, NonceResponse, OperationType, ProxyTransaction,
     ProxyTransactionArgs, RelayerTransaction, RelayerTransactionResponse, RelayerTransactionState,

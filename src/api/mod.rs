@@ -17,7 +17,6 @@
 //! - [`order_requests`] - Order placement and management request builders
 //! - [`position_requests`] - User position request builders
 //! - [`price_requests`] - Price data request builders
-//! - [`tag_requests`] - Tag/category request builders
 //! - [`relayer`] - Polymarket Relayer V2 API client for gasless transactions
 //! - [`bridge`] - Polymarket Bridge API client for cross-chain deposits/withdrawals
 //! - [`utils`] - Utility functions for API interactions
@@ -48,7 +47,6 @@ pub mod clob_endpoints;
 pub mod crypto_price_requests;
 pub mod error;
 pub mod event_requests;
-pub mod fee_requests;
 pub mod http_client;
 pub mod market_requests;
 pub mod order_requests;
@@ -57,7 +55,6 @@ pub mod position_requests;
 pub mod price_requests;
 pub mod relayer;
 pub mod response_handler;
-pub mod tag_requests;
 pub mod webservice_request;
 pub mod utils;
 
@@ -92,7 +89,6 @@ pub use bridge::{
 };
 pub use clob_endpoints::*;
 pub use crypto_price_requests::*;
-pub use fee_requests::*;
 pub use market_requests::*;
 pub use order_requests::*;
 pub use orderbook_requests::*;
