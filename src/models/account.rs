@@ -18,6 +18,7 @@ pub struct Account {
     pub api_secret: String,
     pub api_passphrase: String,
     pub account_type: AccountType,
+    pub account_name: String,
     pub telegram_chat_id: Option<i64>,
     pub telegram_bot_token: Option<String>,
     /// Builder API key for relayer transactions (POLY_BUILDER_API_KEY).
@@ -96,6 +97,7 @@ impl Account {
                 var_name: "API_PASSPHRASE".to_string(),
             })?,
             account_type: AccountType::PolymarketAccount,
+            account_name: env::var("ACCOUNT_NAME").unwrap_or_else(|_| "Polymarket".to_string()),
             telegram_chat_id: telegram.chat_id,
             telegram_bot_token: telegram.bot_token,
             builder_api_key,
@@ -121,6 +123,7 @@ impl Account {
             api_secret: Default::default(),
             api_passphrase: Default::default(),
             account_type: AccountType::PaperAccount,
+            account_name: account_name.to_string(),
             telegram_chat_id: telegram.chat_id,
             telegram_bot_token: telegram.bot_token,
             builder_api_key: None,
