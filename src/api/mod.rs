@@ -54,7 +54,6 @@ pub mod market_requests;
 pub mod order_requests;
 pub mod orderbook_requests;
 pub mod position_requests;
-pub mod price_history_requests;
 pub mod price_requests;
 pub mod relayer;
 pub mod response_handler;
