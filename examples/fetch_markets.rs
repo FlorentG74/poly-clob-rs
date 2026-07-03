@@ -37,11 +37,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("  {}. {}", i + 1, market.question.as_deref().unwrap_or("N/A"));
                 println!("     Slug: {}", market.slug.as_deref().unwrap_or("N/A"));
                 println!("     Active: {}", market.active.unwrap_or(false));
-                if let Some(volume) = &market.volume {
-                    if let Ok(vol) = volume.parse::<f64>() {
+                if let Some(volume) = &market.volume
+                    && let Ok(vol) = volume.parse::<f64>() {
                         println!("     Volume: ${:.2}", vol);
                     }
-                }
                 println!();
             }
         }

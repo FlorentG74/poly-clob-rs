@@ -117,11 +117,10 @@ fn find_header_end(buf: &[u8]) -> Option<usize> {
 fn content_length(buf: &[u8]) -> Option<usize> {
     let head = String::from_utf8_lossy(buf);
     for line in head.lines() {
-        if let Some((name, value)) = line.split_once(':') {
-            if name.trim().eq_ignore_ascii_case("content-length") {
+        if let Some((name, value)) = line.split_once(':')
+            && name.trim().eq_ignore_ascii_case("content-length") {
                 return value.trim().parse().ok();
             }
-        }
     }
     None
 }

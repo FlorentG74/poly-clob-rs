@@ -307,11 +307,10 @@ impl WebserviceRequest {
 
         let mut callable_url = format!("{api}{url}?limit={limit}");
 
-        if let Some(c) = cursor {
-            if !c.is_empty() {
+        if let Some(c) = cursor
+            && !c.is_empty() {
                 Self::add_param_to_url(&mut callable_url, "after_cursor", c);
             }
-        }
 
         for (param_name, param_value) in self.args.iter() {
             if param_name == "limit" {
