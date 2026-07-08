@@ -35,6 +35,7 @@ pub fn ws_client() -> &'static Client {
             .http1_only()
             .connect_timeout(Duration::from_secs(10))
             .tcp_keepalive(Some(Duration::from_secs(60)))
+            .tcp_nodelay(true)
             .build()
             .expect("failed to build WebSocket HTTP client")
     })
