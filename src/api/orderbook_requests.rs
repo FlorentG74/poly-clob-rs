@@ -359,6 +359,7 @@ mod tests {
     /// 3. Fetches the full event data to get market token IDs
     /// 4. Queries order books for all token IDs
     #[tokio::test]
+    #[ignore = "live gamma+CLOB APIs, depends on current wall-clock event — run with --ignored"]
     async fn test_fetch_orderbooks_for_sol_15m_current_event() {
         use crate::api::event_requests::{EventBySlugRequest, SeriesEventsRequest};
         use chrono::Utc;
