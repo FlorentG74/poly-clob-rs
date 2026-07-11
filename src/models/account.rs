@@ -6,7 +6,12 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "PascalCase")]
 pub enum AccountType {
     PaperAccount,
-    PolymarketAccount
+    PolymarketAccount,
+    /// In-process ("MemoryWallet") account: no database, no network. Orders and
+    /// position queries are served from an in-memory `InMemoryPaperWallet`. This is
+    /// the default wallet in replay mode; select it explicitly in a config with
+    /// `account_type = "MemoryAccount"`.
+    MemoryAccount,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -131,6 +136,16 @@ impl Account {
             builder_api_passphrase: None,
             signature_type: SignatureType::PolyProxy,
         }
+    }
+
+    /// Loads an in-memory ("MemoryWallet") account. Metadata is identical to a paper
+    /// account, but the `MemoryAccount` tag signals the trading bot to route all orders
+    /// and position queries through the in-process `InMemoryPaperWallet` (zero DB, zero
+    /// network). This is the default wallet used in replay mode.
+    pub fn load_memory_account(account_name: &str, with_telegram: bool) -> Self {
+        let mut account = Self::load_paper_account(account_name, with_telegram);
+        account.account_type = AccountType::MemoryAccount;
+        account
     }
 
     /// Returns builder credentials if all required fields are present.
