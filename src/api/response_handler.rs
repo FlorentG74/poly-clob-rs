@@ -2,11 +2,76 @@
 //!
 //! Provides consistent error handling for API responses with rich context.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use reqwest::{Response, StatusCode};
+use reqwest::{Response, StatusCode, Version};
 
 use super::error::{ApiError, HttpError, Result};
+use super::GET_CRYPTO_PRICE;
+
+/// One-time transport-degradation alert for the crypto-price endpoint.
+///
+/// The 2026-06-23 outage: Polymarket's Cloudflare began 403-ing HTTP/1.1 requests to
+/// the crypto-price endpoint, silently starving the SVS strike/settlement feed. The
+/// `#[ignore]`d live smoke test guards it in CI, but nothing warned in production. This
+/// raises a loud runtime alert the first time either failure mode is observed on that
+/// endpoint: (1) the connection negotiated something other than HTTP/2, or (2) a 403.
+static CRYPTO_PRICE_NON_H2_ALERTED: AtomicBool = AtomicBool::new(false);
+static CRYPTO_PRICE_403_ALERTED: AtomicBool = AtomicBool::new(false);
+
+/// The transport degradation, if any, worth alerting on for a crypto-price response.
+/// Pure decision fn (no I/O, no once-guard) so the gating is unit-testable.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum CryptoPriceTransportAlert {
+    /// The connection negotiated something other than HTTP/2 — Cloudflare 403s h1 here.
+    NonHttp2,
+    /// The endpoint returned 403 Forbidden — the symptom of an h1 fallback being rejected.
+    Forbidden,
+}
+
+fn crypto_price_transport_alert(
+    url: &str,
+    is_http2: bool,
+    is_forbidden: bool,
+) -> Option<CryptoPriceTransportAlert> {
+    if !url.contains(GET_CRYPTO_PRICE) {
+        return None;
+    }
+    // A 403 is the more actionable symptom, so report it in preference to non-h2.
+    if is_forbidden {
+        Some(CryptoPriceTransportAlert::Forbidden)
+    } else if !is_http2 {
+        Some(CryptoPriceTransportAlert::NonHttp2)
+    } else {
+        None
+    }
+}
+
+/// Emit the crypto-price transport alert at most once per process per failure mode.
+fn alert_crypto_price_transport(url: &str, version: Version, status: StatusCode) {
+    match crypto_price_transport_alert(url, version == Version::HTTP_2, status == StatusCode::FORBIDDEN) {
+        Some(CryptoPriceTransportAlert::Forbidden) => {
+            if !CRYPTO_PRICE_403_ALERTED.swap(true, Ordering::Relaxed) {
+                log::error!(
+                    "[transport-alert] crypto-price endpoint returned 403 ({url}). This is the \
+                     2026-06-23 Cloudflare failure mode: an HTTP/1.1 fallback being rejected, which \
+                     silently starves the strike/settlement feed. Verify the reqwest `http2` feature."
+                );
+            }
+        }
+        Some(CryptoPriceTransportAlert::NonHttp2) => {
+            if !CRYPTO_PRICE_NON_H2_ALERTED.swap(true, Ordering::Relaxed) {
+                log::error!(
+                    "[transport-alert] crypto-price request to {url} negotiated {version:?}, not HTTP/2. \
+                     Cloudflare 403s HTTP/1.1 on this endpoint — the client MUST negotiate h2 \
+                     (reqwest `http2` feature) or the strike/settlement feed will start failing."
+                );
+            }
+        }
+        None => {}
+    }
+}
 
 /// Default retry delay for rate limiting (in seconds), used when the server sends no
 /// usable `Retry-After` header.
@@ -64,6 +129,9 @@ pub const MIN_RATE_LIMIT_DELAY_SECS: u64 = 1;
 /// ```
 pub async fn handle_api_response(response: Response, url: &str) -> Result<String> {
     let status = response.status();
+
+    // Runtime guard for the crypto-price endpoint's Cloudflare/h2 failure mode.
+    alert_crypto_price_transport(url, response.version(), status);
 
     match status {
         StatusCode::OK => {
@@ -354,5 +422,54 @@ fn parse_bad_request_error(raw_response: &str, url: &str) -> ApiError {
         url: url.to_string(),
         message: raw_response.to_string(),
         raw_response: raw_response.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const CRYPTO_URL: &str = "https://polymarket.com/crypto/crypto-price?symbol=BTC";
+    const OTHER_URL: &str = "https://polymarket.com/some/other/endpoint";
+
+    #[test]
+    fn h2_ok_on_crypto_price_no_alert() {
+        // Healthy path: HTTP/2, 200 → nothing to alert on.
+        assert_eq!(
+            crypto_price_transport_alert(CRYPTO_URL, /*is_http2=*/ true, /*is_forbidden=*/ false),
+            None
+        );
+    }
+
+    #[test]
+    fn non_h2_on_crypto_price_alerts() {
+        assert_eq!(
+            crypto_price_transport_alert(CRYPTO_URL, false, false),
+            Some(CryptoPriceTransportAlert::NonHttp2)
+        );
+    }
+
+    #[test]
+    fn forbidden_on_crypto_price_alerts() {
+        assert_eq!(
+            crypto_price_transport_alert(CRYPTO_URL, true, true),
+            Some(CryptoPriceTransportAlert::Forbidden)
+        );
+    }
+
+    #[test]
+    fn forbidden_takes_precedence_over_non_h2() {
+        // Both symptoms at once → the 403 (more actionable) is reported.
+        assert_eq!(
+            crypto_price_transport_alert(CRYPTO_URL, false, true),
+            Some(CryptoPriceTransportAlert::Forbidden)
+        );
+    }
+
+    #[test]
+    fn other_endpoints_never_alert() {
+        // The guard is scoped to the crypto-price endpoint; h1/403 elsewhere is out of scope.
+        assert_eq!(crypto_price_transport_alert(OTHER_URL, false, true), None);
+        assert_eq!(crypto_price_transport_alert(OTHER_URL, false, false), None);
     }
 }

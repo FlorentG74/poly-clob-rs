@@ -37,6 +37,20 @@ pub const DEFAULT_POLL_INTERVAL_MS: u64 = 2000;
 /// Default maximum polling attempts.
 pub const DEFAULT_MAX_POLL_ATTEMPTS: u32 = 30;
 
+/// Gas limit for a proxy (GSN) submission wrapping `n` batched sub-calls.
+///
+/// The gas limit must cover EVERY batched sub-call. A single redeem needs ~355k;
+/// the Polymarket UI scales linearly (~196k per redeem + ~160k base, e.g. 3 redeems
+/// -> ~748k). The old fixed 500_000 fit only one call, so batches of 2+ ran out of
+/// gas inside the relayed call and failed silently (RelayHub reports RelayedCallFailed
+/// while the outer tx still mines). We scale with the batch size, keeping 500_000 as a
+/// floor (the prior single-call default). An empty batch is treated as one call so the
+/// floor still applies.
+pub fn proxy_gas_limit(num_transactions: usize) -> u64 {
+    let n = (num_transactions.max(1)) as u64;
+    (220_000 * n + 200_000).max(500_000)
+}
+
 /// Client for interacting with the Polymarket Relayer API.
 ///
 /// The relayer client provides methods for:
@@ -595,15 +609,7 @@ impl RelayerClient {
         })?;
 
         let proxy_call_data = encode_proxy_call_data(&transactions);
-        // Gas limit must cover EVERY batched sub-call. A single redeem needs
-        // ~355k; the Polymarket UI scales linearly (~196k per redeem + ~160k
-        // base, e.g. 3 redeems -> ~748k). The old fixed 500_000 fit only one
-        // call, so batches of 2+ ran out of gas inside the relayed call and
-        // failed silently (RelayHub reports RelayedCallFailed while the outer
-        // tx still mines). Scale with the batch size, keeping 500_000 as a floor
-        // (the prior single-call default).
-        let n = transactions.len().max(1) as u64;
-        let gas_limit: u64 = (220_000 * n + 200_000).max(500_000);
+        let gas_limit: u64 = proxy_gas_limit(transactions.len());
 
         // Sign using GSN "rlx:" scheme
         let signature = sign_proxy_transaction(
@@ -854,5 +860,107 @@ mod tests {
         assert_eq!(client.chain_id, 80001);
         assert_eq!(client.poll_interval_ms, 1000);
         assert_eq!(client.max_poll_attempts, 10);
+    }
+
+    // ── Gas scaling (proxy batch submissions) ───────────────────────────────
+    //
+    // Regression cover for the silent fund-stranding bug: batches of 2+ redeems
+    // used to be submitted with a fixed 500k gas limit and ran out of gas inside
+    // the relayed call (RelayHub reports RelayedCallFailed while the outer tx mines).
+
+    #[test]
+    fn test_proxy_gas_limit_floor_for_small_batches() {
+        // 0 and 1 sub-calls both clamp to the 500k floor.
+        // 220_000*1 + 200_000 = 420_000 < 500_000.
+        assert_eq!(proxy_gas_limit(0), 500_000);
+        assert_eq!(proxy_gas_limit(1), 500_000);
+    }
+
+    #[test]
+    fn test_proxy_gas_limit_scales_linearly() {
+        // Above the floor, gas grows ~220k per redeem + 200k base.
+        assert_eq!(proxy_gas_limit(2), 640_000); // 440k + 200k
+        assert_eq!(proxy_gas_limit(3), 860_000); // 660k + 200k
+        assert_eq!(proxy_gas_limit(5), 1_300_000); // 1.1M + 200k
+    }
+
+    #[test]
+    fn test_proxy_gas_limit_is_monotonic() {
+        // Larger batches never get less gas than smaller ones.
+        let mut prev = 0u64;
+        for n in 0..=20 {
+            let g = proxy_gas_limit(n);
+            assert!(g >= prev, "gas limit must be non-decreasing (n={n})");
+            prev = g;
+        }
+    }
+
+    // ── Relay-status parsing (parse_submit_response) ─────────────────────────
+    //
+    // The relayer uses varying field names across versions; a mis-parse here
+    // could book a rejected submission as success (or vice-versa).
+
+    #[test]
+    fn test_parse_submit_response_state_aliases() {
+        let cases = [
+            ("STATE_NEW", RelayerTransactionState::New),
+            ("NEW", RelayerTransactionState::New),
+            ("New", RelayerTransactionState::New),
+            ("STATE_EXECUTED", RelayerTransactionState::Executed),
+            ("EXECUTED", RelayerTransactionState::Executed),
+            ("STATE_MINED", RelayerTransactionState::Mined),
+            ("MINED", RelayerTransactionState::Mined),
+            ("STATE_CONFIRMED", RelayerTransactionState::Confirmed),
+            ("CONFIRMED", RelayerTransactionState::Confirmed),
+            ("STATE_FAILED", RelayerTransactionState::Failed),
+            ("FAILED", RelayerTransactionState::Failed),
+            ("STATE_INVALID", RelayerTransactionState::Invalid),
+            ("INVALID", RelayerTransactionState::Invalid),
+        ];
+        for (raw, expected) in cases {
+            let body = format!(r#"{{"transactionID":"abc","state":"{raw}"}}"#);
+            let parsed = RelayerClient::parse_submit_response(&body).unwrap();
+            assert_eq!(parsed.state, expected, "state {raw} mis-parsed");
+            assert_eq!(parsed.transaction_id, "abc");
+        }
+    }
+
+    #[test]
+    fn test_parse_submit_response_unknown_state_defaults_to_new() {
+        // An unrecognized state must NOT be treated as a terminal failure/success;
+        // it defaults to New so the caller keeps polling rather than mis-booking it.
+        let body = r#"{"transactionID":"abc","state":"SOMETHING_ELSE"}"#;
+        let parsed = RelayerClient::parse_submit_response(body).unwrap();
+        assert_eq!(parsed.state, RelayerTransactionState::New);
+    }
+
+    #[test]
+    fn test_parse_submit_response_id_field_variants() {
+        for field in ["transactionID", "transactionId", "transaction_id", "id"] {
+            let body = format!(r#"{{"{field}":"tx-123","state":"NEW"}}"#);
+            let parsed = RelayerClient::parse_submit_response(&body).unwrap();
+            assert_eq!(parsed.transaction_id, "tx-123", "id field {field} not read");
+        }
+    }
+
+    #[test]
+    fn test_parse_submit_response_hash_variants_and_absence() {
+        let with_hash = r#"{"transactionID":"a","state":"MINED","transactionHash":"0xdead"}"#;
+        assert_eq!(
+            RelayerClient::parse_submit_response(with_hash).unwrap().hash,
+            Some("0xdead".to_string())
+        );
+        let with_alt = r#"{"transactionID":"a","state":"MINED","hash":"0xbeef"}"#;
+        assert_eq!(
+            RelayerClient::parse_submit_response(with_alt).unwrap().hash,
+            Some("0xbeef".to_string())
+        );
+        let without = r#"{"transactionID":"a","state":"NEW"}"#;
+        assert_eq!(RelayerClient::parse_submit_response(without).unwrap().hash, None);
+    }
+
+    #[test]
+    fn test_parse_submit_response_rejects_non_json() {
+        assert!(RelayerClient::parse_submit_response("not json at all").is_err());
     }
 }
