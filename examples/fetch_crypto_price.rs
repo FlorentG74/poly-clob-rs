@@ -9,9 +9,16 @@ use poly_clob_rs::api::crypto_price_requests::CryptoPriceRequest;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Example: ETH up/down 15m event starting at a specific timestamp
+    // Install the crate configuration (network policy, credentials) from .env / env vars.
+    poly_clob_rs::config::init_from_env();
+
+    // Example: the most recent completed ETH up/down 15m event window.
+    // (The API only serves timestamps from the last ~30 days.)
     let symbol = "ETH";
-    let event_start_time: i64 = 1738023000; // Unix timestamp in seconds
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_secs() as i64;
+    let event_start_time: i64 = (now / 900) * 900 - 1800;
 
     println!("Fetching crypto price for {} at timestamp {}", symbol, event_start_time);
 

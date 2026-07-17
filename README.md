@@ -1,108 +1,137 @@
 # poly-clob-rs
 
-A Rust client library for the [Polymarket](https://polymarket.com) CLOB (Central Limit Order Book) API.
+A Rust client library for the [Polymarket](https://polymarket.com) APIs: the CLOB (Central Limit Order Book), the Gamma market-data API, and the Data API.
 
-This library provides a comprehensive interface to interact with Polymarket's prediction markets, including:
-- Fetching market data, events, and positions
-- Querying real-time prices
-- Placing and managing orders
-- Authentication via EIP-712 signatures (L1) and HMAC-based API keys (L2)
+- Typed request builders for markets, events, prices, order books, positions, and user activity
+- Order placement and cancellation with EIP-712 signing (L1) and HMAC API keys (L2)
+- Gasless relayer transactions (redeem, approvals) and bridge withdrawals
+- WebSocket transport helpers for live market/user feeds
+- Caller-supplied configuration — the library never reads `.env` or the environment on its own
+- Built-in network policy for Polymarket hosts: optional interface binding (split tunnel) and DNS override
 
 ## Installation
-
-Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
 poly-clob-rs = "0.1.0"
 ```
 
-## Features
+## Configuration
 
-- **Market Data**: Query markets, events, event series, tags, and positions
-- **Price Information**: Get real-time bid/ask prices for prediction market tokens
-- **Order Management**: Place, cancel, and query orders using authenticated API access
-- **Dual Authentication**: Supports both L1 (EIP-712 wallet signatures) and L2 (HMAC API key) authentication
-- **Type-Safe**: Strongly typed models for all API responses
-- **Builder Pattern**: Fluent API for constructing requests
+Install a `Config` once, early in `main`, before any request is made. Every HTTP client, resolver, and credential lookup in the crate reads from this snapshot:
+
+```rust
+use poly_clob_rs::config::{self, Config};
+
+fn main() {
+    dotenvy::dotenv().ok();              // the caller decides to use .env
+    config::init(Config::from_env());    // ... and installs the result
+}
+```
+
+`config::init_from_env()` combines both lines for binaries whose configuration lives in `.env`. `Config::from_env()` is a convenience; construct the struct directly to source values from a file, a secrets manager, or literals in a test. Requests made before `init` panic with an actionable message — there are no silent defaults.
+
+### Settings
+
+| Env var (via `Config::from_env`) | Purpose |
+|---|---|
+| `POLY_ADDRESS`, `PUB_KEY`, `PRIVATE_KEY` | Wallet identity and L1 signing key |
+| `API_KEY`, `API_SECRET`, `API_PASSPHRASE` | L2 (HMAC) API credentials |
+| `SIGNATURE_TYPE` | Wallet type: `EOA`, `POLY_PROXY` (default), or `GNOSIS_SAFE` |
+| `POLY_BUILDER_API_KEY/_SECRET/_PASSPHRASE` | Builder credentials for relayer transactions |
+| `TELEGRAM_CHAT_ID`, `TELEGRAM_BOT_TOKEN` | Optional Telegram notification identity carried on `Account` |
+| `SPLIT_TUNNEL_IFACE` | Bind Polymarket sockets to a specific network interface |
+| `DNS_RESOLVER` | Comma-separated nameservers used for Polymarket hostnames |
+
+All credentials are optional: read-only usage needs none, and a missing credential only errors where it is actually required.
 
 ## Quick Start
 
-### Fetching Market Data
+### Fetching markets
 
 ```rust
-use poly_clob_rs::{WebserviceRequest, MarketsResponse};
+use poly_clob_rs::api::market_requests::MarketsRequest;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create a request for active markets
-    let mut request = WebserviceRequest::new_markets_ws_request();
-    request.with_active_only();
+    poly_clob_rs::config::init_from_env();
 
-    // Build the URL and make the request
-    let url = request.get_callable_url(0);
-    let client = reqwest::Client::new();
-    let markets: MarketsResponse = client.get(&url).send().await?.json().await?;
+    let mut cursor: Option<String> = None;
+    loop {
+        let page = MarketsRequest::builder()
+            .closed(Some(false))
+            .limit(100)
+            .cursor(cursor.clone())
+            .build()
+            .execute()
+            .await?;
 
-    // Print market information
-    for market in markets {
-        println!("{}: {}", market.question, market.slug);
+        for market in &page.data {
+            println!("{}: {}",
+                market.question.as_deref().unwrap_or("?"),
+                market.slug.as_deref().unwrap_or("?"));
+        }
+
+        cursor = page.next_cursor;
+        if cursor.is_none() { break; }
     }
-
     Ok(())
 }
 ```
 
-### Fetching Prices
+### Querying prices
 
 ```rust
-use poly_clob_rs::{WebserviceRequest, PolymarketPricesResponse};
+use poly_clob_rs::api::http_client::get_http_client;
+use poly_clob_rs::{PolymarketPricesResponse, WebserviceRequest};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let token_ids = vec!["token_id_1".to_string(), "token_id_2".to_string()];
+    poly_clob_rs::config::init_from_env();
+
+    let token_ids = vec!["token_id".to_string()];
     let request = WebserviceRequest::new_polymarket_price_request(&token_ids);
+    let client = get_http_client(Some(&request.api));
 
-    let url = request.get_callable_url(0);
-    let client = reqwest::Client::new();
-    let prices: PolymarketPricesResponse = client.get(&url).send().await?.json().await?;
+    let prices: PolymarketPricesResponse =
+        WebserviceRequest::fetch_one(client, &request).await?;
 
-    for (token_id, price) in prices {
-        println!("{}: buy={:?}, sell={:?}", token_id, price.buy, price.sell);
+    for (token_id, price) in &prices {
+        println!("{token_id}: buy={:?}, sell={:?}", price.buy, price.sell);
     }
-
     Ok(())
 }
 ```
 
-### Authentication and Order Placement
+### Placing orders
 
 ```rust
 use poly_clob_rs::{Account, Side, OrderType, api::order_requests::LimitOrderRequest};
+use rust_decimal::Decimal;
+use std::str::FromStr;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Load account credentials from environment
+    poly_clob_rs::config::init_from_env();
     let account = Account::load_poly_account()?;
 
-    // Place a simple GTC order with sensible defaults
+    // GTC order with defaults
     let result = LimitOrderRequest::builder()
         .signer(&account)
-        .price(0.52)
-        .size(10.0)
+        .price(Decimal::from_str("0.52")?)
+        .size(Decimal::from_str("10.0")?)
         .side(Side::Buy)
         .token_id("token_id")
         .build()
         .execute()
         .await?;
+    println!("Order placed: {result}");
 
-    println!("Order placed: {}", result);
-
-    // Or with explicit options (GTD order with expiration)
+    // GTD order with explicit expiration
     let result = LimitOrderRequest::builder()
         .signer(&account)
-        .price(0.52)
-        .size(10.0)
+        .price(Decimal::from_str("0.52")?)
+        .size(Decimal::from_str("10.0")?)
         .side(Side::Buy)
         .token_id("token_id")
         .neg_risk(true)
@@ -111,189 +140,92 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build()
         .execute()
         .await?;
-
+    println!("Order placed: {result}");
     Ok(())
 }
 ```
 
-### Querying User Positions
+Supported order types: `FOK`, `FAK`, `GTC` (default), `GTD`. The API enforces precision limits (USDC amounts max 4 decimals, token amounts max 2); the library rounds automatically.
+
+### Querying positions
 
 ```rust
-use poly_clob_rs::{WebserviceRequest, PositionsResponse};
+use poly_clob_rs::api::http_client::get_http_client;
+use poly_clob_rs::{ApiResponse, PositionsResponse, WebserviceRequest};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let user_address = "0x1234...";
-    let request = WebserviceRequest::new_positions_ws_request(user_address);
+    poly_clob_rs::config::init_from_env();
 
-    let url = request.get_callable_url(0);
-    let client = reqwest::Client::new();
-    let positions: PositionsResponse = client.get(&url).send().await?.json().await?;
+    let request = WebserviceRequest::new_positions_ws_request("0x1234...");
+    let client = get_http_client(Some(&request.api));
 
-    for position in positions {
-        println!(
-            "{} {}: size={}, avg_price={}, pnl={}%",
-            position.title,
-            position.outcome,
-            position.size,
-            position.avg_price,
-            position.percent_pnl
-        );
+    let (_next, positions): (i32, PositionsResponse) =
+        WebserviceRequest::fetch_batch(client, &request, 0).await?;
+
+    for position in positions.iter() {
+        println!("{} {}: size={}, avg_price={}, pnl={}%",
+            position.title, position.outcome,
+            position.size, position.avg_price, position.percent_pnl);
     }
-
     Ok(())
 }
 ```
 
-## Environment Variables
+## Request builders
 
-To use authenticated endpoints, set the following environment variables:
+Typed builders (`TypedBuilder`-based, with an async `execute()`) cover the common endpoints:
 
-```bash
-# L1 Authentication (EIP-712 wallet signatures)
-POLY_ADDRESS="0x..."           # Your Polygon wallet address
-PUB_KEY="0x..."                # Your public key
-PRIVATE_KEY="0x..."            # Your private key
+| Builder | Endpoint |
+|---|---|
+| `MarketsRequest` / `MarketBySlugRequest` | Gamma markets (keyset pagination / by slug) |
+| `EventBySlugRequest` / `SeriesEventsRequest` | Gamma events and event series |
+| `OrderBooksRequest` | CLOB batch order books |
+| `LimitOrderRequest` / `CancelOrderRequest` | CLOB order placement / cancellation |
+| `ActivityRequest` | Data API user activity |
+| `CryptoPriceRequest` | Crypto open/close prices for up/down event strike and settlement |
 
-# L2 Authentication (API key-based)
-POLY_API_KEY="your-api-key"
-POLY_API_SECRET="your-api-secret"
-POLY_API_PASSPHRASE="your-passphrase"
+Endpoints without a typed builder use `WebserviceRequest` constructors (e.g. `new_positions_ws_request`, `new_polymarket_price_request`) together with `fetch_one` / `fetch_batch` (offset pagination) / `fetch_keyset` (cursor pagination). All three retry transient errors automatically.
 
-# Optional: Telegram integration
-TELEGRAM_CHAT_ID="123456789"
-TELEGRAM_BOT_TOKEN="bot-token"
-```
+## HTTP clients and network policy
 
-## API Endpoints
+Always obtain clients from `api::http_client::get_http_client(Some(url))` rather than constructing `reqwest::Client` directly: Polymarket-bound clients apply the configured split-tunnel interface binding and DNS override, and clients are cached process-wide. WebSocket upgrades go through `ws::` helpers, which apply the same policy over HTTP/1.1.
 
-The library provides access to three Polymarket API bases:
+## API endpoints
 
-- **GAMMA API** (`https://gamma-api.polymarket.com`) - Market and event data
-- **CLOB API** (`https://clob.polymarket.com`) - Order book and trading
-- **DATA API** (`https://data-api.polymarket.com`) - Historical data and prices
+- **Gamma API** (`https://gamma-api.polymarket.com`) — market and event data
+- **CLOB API** (`https://clob.polymarket.com`) — order books and trading
+- **Data API** (`https://data-api.polymarket.com`) — positions and activity
+- **Relayer** — gasless transactions (redeem, approvals) via the Builder API
 
 ## Authentication
 
-### L1 Authentication (EIP-712)
+- **L1 (EIP-712)** — orders are signed with your Ethereum private key as EIP-712 typed data. Handled internally by `LimitOrderRequest`/`CancelOrderRequest`; the low-level path is `Order::build_order_query_body`.
+- **L2 (HMAC)** — authenticated REST requests carry HMAC-SHA256 headers built by `api::auth::build_l2_headers`.
 
-L1 authentication uses EIP-712 signatures for order placement. Orders are signed with your Ethereum private key:
+The library targets the **Polygon** network (chain ID 137).
 
-```rust
-use poly_clob_rs::{Order, Side, OrderType};
+## Error handling
 
-let order = Order::builder()
-    .maker("0x...")
-    .signer("0x...")
-    .taker("0x0000000000000000000000000000000000000000")
-    .token_id("token_id")
-    .maker_amount(100)
-    .taker_amount(50)
-    .side(Side::Buy)
-    .order_type(OrderType::GTC)
-    .build();
-
-let signed_body = order.build_order_query_body(salt, nonce, api_key, private_key)?;
-```
-
-### L2 Authentication (HMAC)
-
-L2 authentication uses HMAC signatures for API requests:
-
-```rust
-use poly_clob_rs::auth::build_l2_headers;
-
-let headers = build_l2_headers(
-    &address,
-    &api_key,
-    &api_secret,
-    &api_passphrase,
-    "GET",
-    "/path",
-    "",  // query string
-    "",  // body
-);
-```
-
-## Data Models
-
-The library provides strongly-typed models for all API responses:
-
-- **PolyResponseMarket** - Market information with 39+ fields
-- **PolyResponseEvent** - Event data (groups of related markets)
-- **PolyResponseEventSeries** - Event series (recurring events)
-- **Position** - User position in a market
-- **OpenOrder** - Open order information
-- **PolymarketPrice** - Bid/ask price data
-- **PolyResponseTag** - Market categories/tags
-
-See the [API documentation](https://docs.rs/poly-clob-rs) for complete type definitions.
-
-## Request Builder
-
-The `WebserviceRequest` type provides a fluent API for building requests:
-
-```rust
-let mut request = WebserviceRequest::new_markets_ws_request();
-request
-    .with_active_only()              // Only active markets
-    .with_from_start_date("2024-01-01")  // Markets starting after date
-    .with_tag_id("crypto");          // Filter by tag
-
-let url = request.get_callable_url(0);  // offset = 0
-```
-
-## Pagination
-
-API responses that support pagination implement the `ApiResponse` trait:
-
-```rust
-use poly_clob_rs::ApiResponse;
-
-let markets: MarketsResponse = /* fetch from API */;
-let count = markets.nb_results();  // Number of results in this page
-```
-
-Use the offset parameter in `get_callable_url(offset)` to fetch subsequent pages.
+All fallible APIs return `poly_clob_rs::Result<T>` with the `ClobError` enum (`Api`, `Http`, `Auth`, `Validation`, `Serialization`, `Relayer` variants). `ClobError::is_retryable()` and `retry_after()` support backoff logic; the built-in fetch helpers already retry transient failures.
 
 ## Examples
 
-See the `examples/` directory for complete working examples:
+See [`examples/`](examples/) — each is a runnable binary (`cargo run --example <name>`):
 
-- `fetch_markets.rs` - Fetch and display market data
-- `fetch_prices.rs` - Query token prices
-- `place_order.rs` - Place an order with authentication
-- `query_positions.rs` - Get user positions
+- `fetch_markets` — paginate all active markets
+- `fetch_prices` — fetch a live market, then query its token prices
+- `fetch_events` — fetch an event with its markets
+- `fetch_activity` — query a user's trade activity
+- `fetch_crypto_price` — open/close prices for an up/down event window
+- `query_positions` — open positions for an address
 
-Run an example:
-
-```bash
-cargo run --example fetch_markets
-```
-
-## Network
-
-This library targets the **Polygon** blockchain (Chain ID: 137). All orders and authentication are scoped to this network.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+See [docs/EXAMPLES_GUIDE.md](docs/EXAMPLES_GUIDE.md) for details.
 
 ## License
 
-This project is licensed under either of:
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
-
-at your option.
+Licensed under either of [Apache License 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT), at your option.
 
 ## Disclaimer
 
 This library is not officially affiliated with Polymarket. Use at your own risk. Always test with small amounts first.
-
-## Resources
-
-- [Polymarket](https://polymarket.com)
-- [Polymarket Documentation](https://docs.polymarket.com)
-- [API Documentation](https://docs.rs/poly-clob-rs)

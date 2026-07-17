@@ -11,6 +11,9 @@ use poly_clob_rs::api::market_requests::MarketsRequest;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Install the crate configuration (network policy, credentials) from .env / env vars.
+    poly_clob_rs::config::init_from_env();
+
     println!("Fetching active markets from Polymarket...\n");
 
     let mut cursor: Option<String> = None;

@@ -74,11 +74,11 @@ impl WebserviceRequest {
     /// # Example
     ///
     /// ```rust,no_run
+    /// use poly_clob_rs::api::http_client::get_http_client;
     /// use poly_clob_rs::{WebserviceRequest, MarketsResponse};
     /// use reqwest::Method;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let client = reqwest::Client::new();
     /// let request = WebserviceRequest {
     ///     api: "https://gamma-api.polymarket.com".to_string(),
     ///     url: "/markets".to_string(),
@@ -87,8 +87,9 @@ impl WebserviceRequest {
     ///     args: vec![("active".to_string(), "true".to_string())],
     ///     body: None,
     /// };
+    /// let client = get_http_client(Some(&request.api));
     ///
-    /// let (next_offset, markets) = WebserviceRequest::fetch_batch::<MarketsResponse>(&client, &request, 0).await?;
+    /// let (next_offset, markets) = WebserviceRequest::fetch_batch::<MarketsResponse>(client, &request, 0).await?;
     /// if !markets.is_empty() {
     ///     println!("Retrieved {} markets", markets.len());
     /// }
@@ -202,11 +203,11 @@ impl WebserviceRequest {
     /// # Example
     ///
     /// ```rust,no_run
+    /// use poly_clob_rs::api::http_client::get_http_client;
     /// use poly_clob_rs::{WebserviceRequest, PolyResponseMarket};
     /// use reqwest::Method;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let client = reqwest::Client::new();
     /// let request = WebserviceRequest {
     ///     api: "https://gamma-api.polymarket.com".to_string(),
     ///     url: "/markets/slug/bitcoin-above-100k".to_string(),
@@ -215,8 +216,9 @@ impl WebserviceRequest {
     ///     args: Vec::new(),
     ///     body: None,
     /// };
+    /// let client = get_http_client(Some(&request.api));
     ///
-    /// let market = WebserviceRequest::fetch_one::<PolyResponseMarket>(&client, &request).await?;
+    /// let market = WebserviceRequest::fetch_one::<PolyResponseMarket>(client, &request).await?;
     /// println!("Found market: {:?}", market.question);
     /// # Ok(())
     /// # }

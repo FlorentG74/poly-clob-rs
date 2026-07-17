@@ -7,10 +7,14 @@
 //! cargo run --example fetch_events
 //! ```
 
+use poly_clob_rs::api::http_client::get_http_client;
 use poly_clob_rs::{models::KeysetEventsResponse, WebserviceRequest};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Install the crate configuration (network policy, credentials) from .env / env vars.
+    poly_clob_rs::config::init_from_env();
+
     println!("Fetching events from Polymarket...\n");
 
     // Example: Fetch a specific event by ID (replace with actual event ID)
@@ -21,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Request URL: {}\n", url);
 
-    let client = reqwest::Client::new();
+    let client = get_http_client(Some(&url));
     let response = client.get(&url).send().await?;
 
     if !response.status().is_success() {

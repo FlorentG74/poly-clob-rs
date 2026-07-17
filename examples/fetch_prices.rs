@@ -1,55 +1,56 @@
 //! Example: Fetch token prices from Polymarket
 //!
-//! This example demonstrates how to query real-time prices for prediction market tokens.
+//! Fetches an active market, then queries real-time buy/sell prices for its
+//! outcome tokens via the CLOB API.
 //!
 //! Run with:
 //! ```bash
 //! cargo run --example fetch_prices
 //! ```
 
+use poly_clob_rs::api::http_client::get_http_client;
+use poly_clob_rs::api::market_requests::MarketsRequest;
 use poly_clob_rs::{PolymarketPricesResponse, WebserviceRequest};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Example token IDs (replace with actual token IDs from markets)
-    let token_ids = vec![
-        "52114319501245915516055106046884209969926127482827954674443846427813813942700".to_string(),
-        "48331043336612883890938759509493159234755048973500640148014422747788308965732".to_string(),
-    ];
+    // Install the crate configuration (network policy, credentials) from .env / env vars.
+    poly_clob_rs::config::init_from_env();
 
+    // Grab a live market so we have real token IDs to price.
+    let page = MarketsRequest::builder()
+        .closed(Some(false))
+        .limit(10)
+        .build()
+        .execute()
+        .await?;
+
+    let market = page
+        .data
+        .iter()
+        .find(|m| !m.clob_token_ids.is_empty())
+        .ok_or("no active market with CLOB token IDs found")?;
+
+    println!(
+        "Market: {}\n",
+        market.question.as_deref().unwrap_or("unknown")
+    );
+
+    let token_ids = market.clob_token_ids.clone();
     println!("Fetching prices for {} tokens...\n", token_ids.len());
 
-    // Create a price request
+    // POST /prices with a JSON body listing (token_id, side) pairs
     let request = WebserviceRequest::new_polymarket_price_request(&token_ids);
+    let client = get_http_client(Some(&request.api));
 
-    // Build the URL
-    let url = request.get_callable_url(0);
-    println!("Request URL: {}\n", url);
-
-    // Make the HTTP request
-    let client = reqwest::Client::new();
-    let response = client.get(&url).send().await?;
-
-    // Parse the response
-    let prices: PolymarketPricesResponse = response.json().await?;
+    let prices: PolymarketPricesResponse = WebserviceRequest::fetch_one(client, &request).await?;
 
     println!("Received prices for {} tokens:\n", prices.len());
 
     for (token_id, price) in prices.iter() {
         println!("Token ID: {}", token_id);
-
-        if let Some(buy) = &price.buy {
-            println!("  Buy Price:  {}", buy);
-        } else {
-            println!("  Buy Price:  N/A");
-        }
-
-        if let Some(sell) = &price.sell {
-            println!("  Sell Price: {}", sell);
-        } else {
-            println!("  Sell Price: N/A");
-        }
-
+        println!("  Buy Price:  {}", price.buy.as_deref().unwrap_or("N/A"));
+        println!("  Sell Price: {}", price.sell.as_deref().unwrap_or("N/A"));
         println!();
     }
 

@@ -8,30 +8,41 @@
 //! - Place and manage orders
 //! - Authenticate via EIP-712 signatures (L1) or HMAC-based API keys (L2)
 //!
+//! ## Configuration
+//!
+//! The library never reads `.env` or the process environment on its own. Install a
+//! [`config::Config`] once, early in `main`, before any request is made:
+//!
+//! ```rust,no_run
+//! use poly_clob_rs::config::{self, Config};
+//!
+//! fn main() {
+//!     dotenvy::dotenv().ok();            // the caller decides to use .env
+//!     config::init(Config::from_env());  // ... and installs the result
+//! }
+//! ```
+//!
+//! See [`config`] for details (credentials, split tunnelling, DNS overrides).
+//!
 //! ## Quick Start
 //!
 //! ### Fetching Markets
 //!
 //! ```rust,no_run
-//! use poly_clob_rs::{WebserviceRequest, MarketsResponse};
-//! use reqwest::Method;
+//! use poly_clob_rs::api::market_requests::MarketsRequest;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let request = WebserviceRequest {
-//!         api: "https://gamma-api.polymarket.com".to_string(),
-//!         url: "/markets".to_string(),
-//!         method: Method::GET,
-//!         with_pagination: true,
-//!         args: vec![("active".to_string(), "true".to_string())],
-//!         body: None,
-//!     };
+//!     poly_clob_rs::config::init_from_env();
 //!
-//!     let url = request.get_callable_url(0);
-//!     let client = reqwest::Client::new();
-//!     let markets: MarketsResponse = client.get(&url).send().await?.json().await?;
+//!     let page = MarketsRequest::builder()
+//!         .closed(Some(false))
+//!         .limit(100)
+//!         .build()
+//!         .execute()
+//!         .await?;
 //!
-//!     for market in markets {
+//!     for market in &page.data {
 //!         println!("{}: {}",
 //!             market.question.as_deref().unwrap_or("No question"),
 //!             market.slug.as_deref().unwrap_or("no-slug"));
@@ -43,20 +54,23 @@
 //! ### Querying Prices
 //!
 //! ```rust,no_run
+//! use poly_clob_rs::api::http_client::get_http_client;
 //! use poly_clob_rs::{WebserviceRequest, PolymarketPricesResponse};
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     poly_clob_rs::config::init_from_env();
+//!
 //!     let token_ids = vec!["token_id".to_string()];
 //!     let request = WebserviceRequest::new_polymarket_price_request(&token_ids);
+//!     let client = get_http_client(Some(&request.api));
 //!
-//!     let url = request.get_callable_url(0);
-//!     let client = reqwest::Client::new();
-//!     let prices: PolymarketPricesResponse = client.post(&url)
-//!         .header("Content-Type", "application/json")
-//!         .body(request.body.unwrap())
-//!         .send().await?
-//!         .json().await?;
+//!     let prices: PolymarketPricesResponse =
+//!         WebserviceRequest::fetch_one(client, &request).await?;
+//!
+//!     for (token_id, price) in &prices {
+//!         println!("{token_id}: buy={:?} sell={:?}", price.buy, price.sell);
+//!     }
 //!     Ok(())
 //! }
 //! ```
@@ -70,6 +84,7 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     poly_clob_rs::config::init_from_env();
 //!     let account = Account::load_poly_account()?;
 //!
 //!     // Simple order with defaults (GTC, expiration=0)
@@ -94,8 +109,10 @@
 //!
 //! ## Modules
 //!
-//! - [`api`] - API request builders and authentication
+//! - [`api`] - API request builders, HTTP client factory, and authentication
 //! - [`models`] - Data models for API requests and responses
+//! - [`config`] - Caller-supplied process-wide configuration
+//! - [`ws`] - Polymarket websocket message types
 //!
 //! ## Authentication
 //!

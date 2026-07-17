@@ -11,9 +11,12 @@ use poly_clob_rs::api::activity_requests::{ActivityRequest, ActivityType, Activi
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Install the crate configuration (network policy, credentials) from .env / env vars.
+    poly_clob_rs::config::init_from_env();
+
     println!("Fetching user activity from Polymarket...\n");
 
-    // Create a request for user activity (using the sample user from the curl example)
+    // Create a request for user activity (sample public address)
     let request = ActivityRequest::builder()
         .user("0x961afce6bd9aec79c5cf09d2d4dac2b434b23361")
         .limit(10) // Limit to 10 activities for this example

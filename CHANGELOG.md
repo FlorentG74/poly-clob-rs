@@ -7,30 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Caller-supplied configuration (`config::Config` + `config::init`) — the library no longer reads `.env` or the environment on its own; requests made before `init` panic instead of silently defaulting
+- Polymarket network policy on all HTTP clients: split-tunnel interface binding (`SPLIT_TUNNEL_IFACE`) and DNS override (`DNS_RESOLVER`) via a single client factory (`api::http_client::get_http_client`)
+- Typed request builders with async `execute()`: `MarketsRequest` (keyset pagination), `MarketBySlugRequest`, `EventBySlugRequest`, `SeriesEventsRequest`, `OrderBooksRequest`, `ActivityRequest`, `CryptoPriceRequest`, `LimitOrderRequest`, `CancelOrderRequest`
+- Relayer client for gasless transactions (redeem, approvals) via the Builder API, and bridge withdrawal support
+- WebSocket transport helpers (`ws` module) with HTTP/1.1 upgrade handling
+- Structured error types (`ClobError` and friends) with `is_retryable()` / `retry_after()`; fetch helpers retry transient failures
+
+### Changed
+- `Decimal`-based order prices/sizes with automatic rounding to Polymarket precision limits
+
 ## [0.1.0] - 2025-11-23
 
 ### Added
-- Initial release of poly-clob-rs
-- Support for Polymarket CLOB API v1
-- Market data fetching (markets, events, event series)
-- Position querying
-- Price data retrieval
-- Tag/category support
-- Order placement with EIP-712 signatures (L1 authentication)
-- HMAC-based API authentication (L2 authentication)
-- Comprehensive type definitions for all API responses
-- Builder pattern for constructing API requests
-- Examples for common use cases
-- Full API documentation
-
-### Features
-- `WebserviceRequest` builder for all API endpoints
-- `Account` type for credential management
-- `Order` type with EIP-712 signing support
-- Response types: Markets, Events, Positions, Prices, Tags
-- Authentication helpers for L1 and L2 auth
-- Pagination support via `ApiResponse` trait
-- Type-safe enums for order sides, types, and asset types
-
-[Unreleased]: https://github.com/yourusername/poly-clob-rs/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/yourusername/poly-clob-rs/releases/tag/v0.1.0
+- Initial release: Polymarket CLOB/Gamma/Data API coverage — market, event, position, price, and tag queries; order placement with EIP-712 (L1) signing and HMAC (L2) authentication; `WebserviceRequest` builder with offset pagination; typed response models; examples

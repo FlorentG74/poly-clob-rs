@@ -1,7 +1,5 @@
-/// Common constants shared across the `poly-clob-rs` crate.
-///
-/// Aim: centralize values that were previously duplicated across modules
-/// (e.g., `RAW_UNIT_MULTIPLIER`, chain ids).
+// Common constants shared across the `poly-clob-rs` crate.
+
 /// Multiplier to convert raw integer amounts to human decimals (6 decimals)
 pub const RAW_UNIT_MULTIPLIER: i64 = 1_000_000;
 

@@ -39,13 +39,12 @@ pub const DEFAULT_MAX_POLL_ATTEMPTS: u32 = 30;
 
 /// Gas limit for a proxy (GSN) submission wrapping `n` batched sub-calls.
 ///
-/// The gas limit must cover EVERY batched sub-call. A single redeem needs ~355k;
-/// the Polymarket UI scales linearly (~196k per redeem + ~160k base, e.g. 3 redeems
-/// -> ~748k). The old fixed 500_000 fit only one call, so batches of 2+ ran out of
-/// gas inside the relayed call and failed silently (RelayHub reports RelayedCallFailed
-/// while the outer tx still mines). We scale with the batch size, keeping 500_000 as a
-/// floor (the prior single-call default). An empty batch is treated as one call so the
-/// floor still applies.
+/// The gas limit must cover EVERY batched sub-call: an under-budgeted relayed call
+/// fails silently (RelayHub reports RelayedCallFailed while the outer tx still mines).
+/// A single redeem needs ~355k; the Polymarket UI scales linearly (~196k per redeem
+/// + ~160k base, e.g. 3 redeems -> ~748k), so we scale with the batch size and keep
+/// 500_000 as a single-call floor. An empty batch is treated as one call so the floor
+/// still applies.
 pub fn proxy_gas_limit(num_transactions: usize) -> u64 {
     let n = (num_transactions.max(1)) as u64;
     (220_000 * n + 200_000).max(500_000)
@@ -864,9 +863,9 @@ mod tests {
 
     // ── Gas scaling (proxy batch submissions) ───────────────────────────────
     //
-    // Regression cover for the silent fund-stranding bug: batches of 2+ redeems
-    // used to be submitted with a fixed 500k gas limit and ran out of gas inside
-    // the relayed call (RelayHub reports RelayedCallFailed while the outer tx mines).
+    // Guards against silent fund-stranding: a fixed gas limit makes batches of 2+
+    // redeems run out of gas inside the relayed call (RelayHub reports
+    // RelayedCallFailed while the outer tx mines), so the limit must scale.
 
     #[test]
     fn test_proxy_gas_limit_floor_for_small_batches() {
