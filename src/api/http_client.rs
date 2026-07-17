@@ -21,6 +21,19 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use crate::api::dns::configured_resolver;
+
+    #[cfg(any(
+        target_os = "android",
+        target_os = "fuchsia",
+        target_os = "illumos",
+        target_os = "ios",
+        target_os = "linux",
+        target_os = "macos",
+        target_os = "solaris",
+        target_os = "tvos",
+        target_os = "visionos",
+        target_os = "watchos",
+    ))]
 use crate::config::get_config;
 
 /// Default HTTP client singleton for non-Polymarket requests.
