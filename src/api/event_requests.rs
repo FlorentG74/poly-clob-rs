@@ -33,7 +33,7 @@ pub struct EventBySlugRequest<'a> {
 
 impl<'a> EventBySlugRequest<'a> {
     pub async fn execute(&self) -> Result<PolyResponseEvent> {
-        let client = get_http_client(None);
+        let client = get_http_client(Some(GAMMA_API));
 
         let web_service_request = WebserviceRequest {
             api: GAMMA_API.to_string(),
@@ -81,10 +81,13 @@ pub struct SeriesEventsRequest<'a> {
 }
 
 impl<'a> SeriesEventsRequest<'a> {
-    /// Execute the request and return events ordered by `end_date` ascending
+    /// Execute the request and return events ordered by end date ascending
     /// (as requested from the API; no client-side sort).
+    ///
+    /// The `order` field must be the API's camelCase name: gamma rejects the snake_case
+    /// `end_date` with `422 "order fields are not valid"`.
     pub async fn execute(&self) -> Result<Vec<Event>> {
-        let client = get_http_client(None);
+        let client = get_http_client(Some(GAMMA_API));
 
         let mut req = WebserviceRequest {
             api: GAMMA_API.to_string(),
@@ -96,7 +99,7 @@ impl<'a> SeriesEventsRequest<'a> {
         };
 
         req.add_arg("series_slug".to_string(), self.series_slug.to_string());
-        req.add_arg("order".to_string(), "end_date".to_string());
+        req.add_arg("order".to_string(), "endDate".to_string());
         req.add_arg("ascending".to_string(), "true".to_string());
         req.add_arg("closed".to_string(), "false".to_string());
         req.add_arg("limit".to_string(), self.limit.to_string());
