@@ -1,5 +1,6 @@
-use crate::api::error::{AuthError, Result};
+use crate::api::error::Result;
 use crate::api::relayer::SignatureType;
+use crate::config::get_config;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -40,84 +41,41 @@ pub struct Account {
     pub signature_type: SignatureType,
 }
 
-/// Telegram configuration loaded from environment variables.
-struct TelegramConfig {
-    chat_id: Option<i64>,
-    bot_token: Option<String>,
-}
-
-/// Loads telegram configuration from environment variables.
-fn load_telegram_config() -> TelegramConfig {
-    use std::env;
-
-    let chat_id = env::var("TELEGRAM_CHAT_ID")
-        .ok()
-        .and_then(|v| v.parse::<i64>().ok())
-        .filter(|&id| id != 0);
-
-    let bot_token = env::var("TELEGRAM_BOT_TOKEN")
-        .ok()
-        .filter(|t| !t.is_empty());
-
-    TelegramConfig { chat_id, bot_token }
-}
-
 impl Account {
+    /// Builds the live Polymarket account from [`get_config`].
+    ///
+    /// Errors when a required credential is absent — which is the normal case for
+    /// paper- and replay-only runs, so callers are expected to handle it.
     pub fn load_poly_account() -> Result<Self> {
-        use dotenvy::dotenv;
-        use std::env;
-
-        dotenv().ok();
-
-        let telegram = load_telegram_config();
-
-        // Load builder credentials (optional)
-        let builder_api_key = env::var("POLY_BUILDER_API_KEY").ok();
-        let builder_api_secret = env::var("POLY_BUILDER_API_SECRET").ok();
-        let builder_api_passphrase = env::var("POLY_BUILDER_API_PASSPHRASE").ok();
-
-        // Load signature type (defaults to POLY_PROXY for backwards compatibility)
-        let signature_type = env::var("SIGNATURE_TYPE")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(SignatureType::PolyProxy);
+        let config = get_config();
 
         Ok(Account {
-            poly_address: env::var("POLY_ADDRESS").map_err(|_| AuthError::MissingEnvVar {
-                var_name: "POLY_ADDRESS".to_string(),
-            })?,
-            pub_key: env::var("PUB_KEY").map_err(|_| AuthError::MissingEnvVar {
-                var_name: "PUB_KEY".to_string(),
-            })?,
-            private_key: env::var("PRIVATE_KEY").map_err(|_| AuthError::MissingEnvVar {
-                var_name: "PRIVATE_KEY".to_string(),
-            })?,
-            api_key: env::var("API_KEY").map_err(|_| AuthError::MissingEnvVar {
-                var_name: "API_KEY".to_string(),
-            })?,
-            api_secret: env::var("API_SECRET").map_err(|_| AuthError::MissingEnvVar {
-                var_name: "API_SECRET".to_string(),
-            })?,
-            api_passphrase: env::var("API_PASSPHRASE").map_err(|_| AuthError::MissingEnvVar {
-                var_name: "API_PASSPHRASE".to_string(),
-            })?,
+            poly_address: config.require(&config.poly_address, "POLY_ADDRESS")?,
+            pub_key: config.require(&config.pub_key, "PUB_KEY")?,
+            private_key: config.require(&config.private_key, "PRIVATE_KEY")?,
+            api_key: config.require(&config.api_key, "API_KEY")?,
+            api_secret: config.require(&config.api_secret, "API_SECRET")?,
+            api_passphrase: config.require(&config.api_passphrase, "API_PASSPHRASE")?,
             account_type: AccountType::PolymarketAccount,
-            account_name: env::var("ACCOUNT_NAME").unwrap_or_else(|_| "Polymarket".to_string()),
-            telegram_chat_id: telegram.chat_id,
-            telegram_bot_token: telegram.bot_token,
-            builder_api_key,
-            builder_api_secret,
-            builder_api_passphrase,
-            signature_type,
+            account_name: config
+                .account_name
+                .clone()
+                .unwrap_or_else(|| "Polymarket".to_string()),
+            telegram_chat_id: config.telegram_chat_id,
+            telegram_bot_token: config.telegram_bot_token.clone(),
+            builder_api_key: config.poly_builder_api_key.clone(),
+            builder_api_secret: config.poly_builder_api_secret.clone(),
+            builder_api_passphrase: config.poly_builder_api_passphrase.clone(),
+            signature_type: config.signature_type,
         })
     }
 
     pub fn load_paper_account(account_name: &str, with_telegram: bool) -> Self {
-        let telegram = if with_telegram {
-            load_telegram_config()
-
+        let config = get_config();
+        let (telegram_chat_id, telegram_bot_token) = if with_telegram {
+            (config.telegram_chat_id, config.telegram_bot_token.clone())
         } else {
-            TelegramConfig { chat_id: None, bot_token: None }
+            (None, None)
         };
 
         Account {
@@ -129,8 +87,8 @@ impl Account {
             api_passphrase: Default::default(),
             account_type: AccountType::PaperAccount,
             account_name: account_name.to_string(),
-            telegram_chat_id: telegram.chat_id,
-            telegram_bot_token: telegram.bot_token,
+            telegram_chat_id,
+            telegram_bot_token,
             builder_api_key: None,
             builder_api_secret: None,
             builder_api_passphrase: None,

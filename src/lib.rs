@@ -107,6 +107,7 @@
 //! See [`api::auth`] for authentication utilities.
 
 pub mod api;
+pub mod config;
 pub mod models;
 pub mod constants;
 pub mod ws;

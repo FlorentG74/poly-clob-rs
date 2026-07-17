@@ -9,6 +9,7 @@
 
 use crate::api::auth::clob_auth::{build_hmac_signature, get_timestamp};
 use crate::api::error::{AuthError, Result};
+use crate::config::get_config;
 use alloy::primitives::{keccak256, Address, Bytes, U256};
 use alloy::signers::local::PrivateKeySigner;
 use alloy::signers::Signer as AlloySigner;
@@ -37,29 +38,22 @@ impl BuilderCredentials {
         }
     }
 
-    /// Load builder credentials from environment variables.
+    /// Load builder credentials from [`get_config`].
     ///
     /// Reads from:
     /// - `POLY_BUILDER_API_KEY`
     /// - `POLY_BUILDER_API_SECRET`
     /// - `POLY_BUILDER_API_PASSPHRASE`
     pub fn from_env() -> Result<Self> {
-        use std::env;
-        dotenvy::dotenv().ok();
+        let config = get_config();
 
         Ok(Self {
-            api_key: env::var("POLY_BUILDER_API_KEY")
-                .map_err(|_| AuthError::MissingEnvVar {
-                    var_name: "POLY_BUILDER_API_KEY".to_string(),
-                })?,
-            api_secret: env::var("POLY_BUILDER_API_SECRET")
-                .map_err(|_| AuthError::MissingEnvVar {
-                    var_name: "POLY_BUILDER_API_SECRET".to_string(),
-                })?,
-            api_passphrase: env::var("POLY_BUILDER_API_PASSPHRASE")
-                .map_err(|_| AuthError::MissingEnvVar {
-                    var_name: "POLY_BUILDER_API_PASSPHRASE".to_string(),
-                })?,
+            api_key: config.require(&config.poly_builder_api_key, "POLY_BUILDER_API_KEY")?,
+            api_secret: config.require(&config.poly_builder_api_secret, "POLY_BUILDER_API_SECRET")?,
+            api_passphrase: config.require(
+                &config.poly_builder_api_passphrase,
+                "POLY_BUILDER_API_PASSPHRASE",
+            )?,
         })
     }
 }

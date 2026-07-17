@@ -27,13 +27,15 @@ mod tests {
     /// Run with: cargo test -p poly-clob-rs test_positions_raw_response -- --nocapture
     #[tokio::test]
     async fn test_positions_raw_response() {
+        crate::config::init_from_env();
         let account = crate::models::Account::load_poly_account()
             .expect("load poly account from .env");
 
         // Query our own wallet first
         let url = format!("{}{}?user={}&sizeThreshold=.1", DATA_API, POSITIONS, account.poly_address);
 
-        let client = reqwest::Client::new();
+        // Same client the bot uses, so split tunnelling and the DNS override apply.
+        let client = crate::api::http_client::get_http_client(Some(DATA_API));
         let resp = client.get(&url).send().await.expect("HTTP request failed");
         let status = resp.status();
         let body = resp.text().await.expect("read body");

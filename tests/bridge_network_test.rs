@@ -20,7 +20,7 @@ use poly_clob_rs::api::bridge::BridgeClient;
 #[ignore = "hits the live bridge.polymarket.com network; run with --ignored --nocapture"]
 async fn live_show_deposit_addresses_for_env_wallet() {
     // Load .env from the crate dir or any parent (workspace root holds it).
-    let _ = dotenvy::dotenv();
+    poly_clob_rs::config::init_from_env();
 
     let address = match std::env::var("POLY_ADDRESS") {
         Ok(addr) if !addr.trim().is_empty() => addr,

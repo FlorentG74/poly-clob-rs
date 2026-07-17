@@ -531,6 +531,7 @@ mod tests {
     /// Run with: cargo test -p poly-clob-rs test_order_status_auth_live -- --nocapture
     #[tokio::test]
     async fn test_order_status_auth_live() {
+        crate::config::init_from_env();
         let account = crate::models::Account::load_poly_account()
             .expect("load poly account from .env");
 

@@ -6,6 +6,7 @@ use poly_clob_rs::api::event_requests::SeriesEventsRequest;
 
 #[tokio::test]
 async fn test_fetch_btc_hourly_open_price() {
+    poly_clob_rs::config::init_from_env();
     let events = SeriesEventsRequest::builder()
         .series_slug("btc-up-or-down-hourly")
         .build()
