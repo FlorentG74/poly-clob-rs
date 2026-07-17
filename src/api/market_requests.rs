@@ -101,7 +101,7 @@ impl<'a> MarketBySlugRequest<'a> {
     /// * The API returns an error response (e.g., 404 if market not found)
     /// * The response cannot be deserialized
     pub async fn execute(&self) -> Result<PolyResponseMarket> {
-        let client = get_http_client(None);
+        let client = get_http_client(Some(GAMMA_API));
 
         let web_service_request = super::webservice_request::WebserviceRequest {
             api: GAMMA_API.to_string(),
@@ -253,7 +253,7 @@ impl MarketsRequest {
     /// whether more pages exist. Pass it back via [`MarketsRequest::cursor`] to
     /// fetch the next page.
     pub async fn execute(&self) -> Result<KeysetMarketsResponse> {
-        let client = get_http_client(None);
+        let client = get_http_client(Some(GAMMA_API));
 
         let mut web_service_request = super::webservice_request::WebserviceRequest {
             api: GAMMA_API.to_string(),

@@ -53,7 +53,7 @@ pub async fn send_authed(
     body: &str,
     salt: &str,
 ) -> Result<reqwest::Response> {
-    let client = get_http_client(Some(sign_path));
+    let client = get_http_client(Some(url));
     let l2_headers = build_l2_headers(signer, method.as_str(), sign_path, body, salt)?;
 
     let builder = match method {

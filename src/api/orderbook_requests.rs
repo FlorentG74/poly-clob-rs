@@ -220,7 +220,7 @@ impl OrderBooksRequest {
             body: Some(body),
         };
 
-        let client = get_http_client(None);
+        let client = get_http_client(Some(CLOB_API));
 
         // fetch_one returns Option<T>, handle the None case
         match WebserviceRequest::fetch_one::<OrderBooksResponse>(client, &ws_request).await {

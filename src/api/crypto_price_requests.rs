@@ -97,7 +97,7 @@ impl<'a> CryptoPriceRequest<'a> {
 
     /// Execute the request and return the crypto price response.
     pub async fn execute(&self) -> Result<CryptoPriceResponse> {
-        let client = get_http_client(None);
+        let client = get_http_client(Some(POLYMARKET_API));
 
         let web_service_request = WebserviceRequest {
             api: POLYMARKET_API.to_string(),
