@@ -45,6 +45,7 @@ pub mod activity_requests;
 pub mod bridge;
 pub mod clob_endpoints;
 pub mod crypto_price_requests;
+pub mod dns;
 pub mod error;
 pub mod event_requests;
 pub mod http_client;
