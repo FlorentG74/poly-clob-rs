@@ -100,7 +100,7 @@ pub fn configured_resolver() -> Option<Arc<ConfiguredResolver>> {
 
             match ConfiguredResolver::new(nameservers) {
                 Ok(resolver) => {
-                    log::info!(
+                    log::debug!(
                         "Resolving Polymarket hostnames via {nameservers:?} (IPv4 only), bypassing the system resolver"
                     );
                     Some(Arc::new(resolver))
