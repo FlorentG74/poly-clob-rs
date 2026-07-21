@@ -100,7 +100,7 @@ pub const MIN_RATE_LIMIT_DELAY_SECS: u64 = 1;
 /// - **403 Forbidden**: Returns `ApiError::Forbidden` with optional details
 /// - **404 Not Found**: Returns `ApiError::NotFound` with resource type inferred from URL
 /// - **429 Too Many Requests**: Returns `ApiError::RateLimited` with retry delay from header
-/// - **5xx Server Errors**: Returns `ApiError::ServerError` with transient flag (502/503/504 are transient)
+/// - **5xx Server Errors**: Returns `ApiError::ServerError` with transient flag (500/502/503/504 are transient)
 /// - **Other**: Returns `ApiError::UnexpectedStatus` with full context
 ///
 /// # Rate Limiting
@@ -218,7 +218,10 @@ pub async fn handle_api_response(response: Response, url: &str) -> Result<String
             Err(ApiError::ServerError {
                 status: 500,
                 url: url.to_string(),
-                is_transient: false, // 500 is typically not transient
+                // Treat 500 as transient, like 502/503/504 below: on Polymarket's endpoints
+                // (notably POST /order) a 500 is a server-side matching-engine hiccup, not a
+                // client fault — retryable, and callers degrade-and-skip rather than halt.
+                is_transient: true,
                 response_body,
             }
             .into())
