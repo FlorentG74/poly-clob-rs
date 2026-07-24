@@ -35,6 +35,7 @@ diesel = { version = "2.3.9", features = ["postgres"], optional = true }
 hickory-resolver = { version = "0.26", features = ["tokio"] }
 
 [dev-dependencies]
+http = "1"
 
 [features]
 default = []

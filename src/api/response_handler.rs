@@ -262,6 +262,24 @@ pub async fn handle_api_response(response: Response, url: &str) -> Result<String
             }
             .into())
         }
+        // 425 Too Early — Polymarket's POST /order returns this with
+        // {"error":"order manager not ready, please retry"} when its matching engine
+        // is briefly warming up. It is a retry hint, not a client fault, so map it to
+        // MarketNotReady (retryable + recoverable-order-error): the live buy path skips
+        // the order and keeps trading instead of latching the whole arm dead.
+        StatusCode::TOO_EARLY => {
+            let response_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Failed to read response body".to_string());
+            log::warn!("Order manager not ready (425) for {}: {}", url, response_body);
+
+            Err(ApiError::MarketNotReady {
+                url: url.to_string(),
+                message: response_body,
+            }
+            .into())
+        }
         other => {
             let status_code = other.as_u16();
             let response_body = response
@@ -434,6 +452,32 @@ mod tests {
 
     const CRYPTO_URL: &str = "https://polymarket.com/crypto/crypto-price?symbol=BTC";
     const OTHER_URL: &str = "https://polymarket.com/some/other/endpoint";
+    const ORDER_URL: &str = "https://clob.polymarket.com/order";
+
+    // A 425 "order manager not ready" on POST /order must be treated as a transient,
+    // recoverable order error (skip the order, keep trading) — NOT a fatal status that
+    // latches the strategy dead. Regression guard for the Jul 24 XRP overnight halt.
+    #[tokio::test]
+    async fn too_early_425_maps_to_market_not_ready() {
+        let http_resp = http::Response::builder()
+            .status(425)
+            .body(r#"{"error":"order manager not ready, please retry"}"#.to_string())
+            .unwrap();
+        let response = Response::from(http_resp);
+
+        let err = handle_api_response(response, ORDER_URL).await.unwrap_err();
+
+        match &err {
+            crate::ClobError::Api(api @ ApiError::MarketNotReady { .. }) => {
+                assert!(api.is_retryable(), "425 should be retryable");
+                assert!(
+                    api.is_recoverable_order_error(),
+                    "425 should be a recoverable order error so the arm keeps trading"
+                );
+            }
+            other => panic!("expected MarketNotReady, got {other:?}"),
+        }
+    }
 
     #[test]
     fn h2_ok_on_crypto_price_no_alert() {
