@@ -2,9 +2,41 @@ use reqwest::Method;
 
 use super::{WebserviceRequest, DATA_API, POSITIONS};
 
+/// Default `sizeThreshold` for `/positions`.
+///
+/// **This parameter must be sent explicitly.** Omitting it is NOT "no filter": the
+/// data-api defaults to `sizeThreshold=1`, silently dropping every position under one
+/// share. Verified against the live endpoint on 2026-07-28 — for the same wallet,
+/// no param and `sizeThreshold=1` both returned 0 positions, while `.1` and `0`
+/// returned a real 0.5645-share redeemable winner.
+///
+/// That default is how partial GTD fills landing under one share became invisible to
+/// both the trading path and the redeemer, leaving them permanently unredeemable while
+/// the activity API still listed their buys (so the web UI showed them as open forever).
+const DEFAULT_POSITION_SIZE_THRESHOLD: &str = "0.1";
+
+/// `sizeThreshold` for the redeemer's `--scan-dust` pass: everything, no floor.
+const DUST_SCAN_SIZE_THRESHOLD: &str = "0";
+
 impl WebserviceRequest {
+    /// Positions request with the standard floor — drops sub-0.1-share residue.
     pub fn new_positions_ws_request(user: &str) -> Self {
-        let args = vec![(String::from("user"), user.to_string())];
+        Self::positions_request(user, DEFAULT_POSITION_SIZE_THRESHOLD)
+    }
+
+    /// Positions request with NO size floor, for the redeemer's `--scan-dust`.
+    ///
+    /// That pass exists to find what the normal path misses, so inheriting the normal
+    /// path's floor would make it skip exactly the residue it is meant to discover.
+    pub fn new_positions_ws_request_all_sizes(user: &str) -> Self {
+        Self::positions_request(user, DUST_SCAN_SIZE_THRESHOLD)
+    }
+
+    fn positions_request(user: &str, size_threshold: &str) -> Self {
+        let args = vec![
+            (String::from("user"), user.to_string()),
+            (String::from("sizeThreshold"), size_threshold.to_string()),
+        ];
 
         WebserviceRequest {
             api: DATA_API.to_string(),
@@ -20,6 +52,28 @@ impl WebserviceRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn arg<'a>(req: &'a WebserviceRequest, key: &str) -> Option<&'a str> {
+        req.args.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+    }
+
+    /// `sizeThreshold` must always be sent. Omitting it is not "no filter" — the data-api
+    /// defaults to 1 and silently hides every sub-one-share position, which is how
+    /// redeemable dust became invisible to both the bot and the redeemer.
+    #[test]
+    fn positions_request_always_sends_size_threshold() {
+        let req = WebserviceRequest::new_positions_ws_request("0xabc");
+        assert_eq!(arg(&req, "user"), Some("0xabc"));
+        assert_eq!(arg(&req, "sizeThreshold"), Some("0.1"));
+    }
+
+    /// The dust scan must not inherit the standard floor, or it skips the very residue
+    /// it exists to find.
+    #[test]
+    fn dust_scan_request_sends_zero_threshold() {
+        let req = WebserviceRequest::new_positions_ws_request_all_sizes("0xabc");
+        assert_eq!(arg(&req, "sizeThreshold"), Some("0"));
+    }
 
     /// Prints the raw JSON from the positions API so we can inspect the exact field names
     /// and whether `avgPrice` is present and populated in the live response.
