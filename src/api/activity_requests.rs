@@ -144,29 +144,19 @@ pub struct ActivityRequest<'a> {
     pub side: Option<ActivitySide>,
 }
 
-impl<'a> ActivityRequest<'a> {
-    /// Executes the activity request.
-    ///
-    /// # Returns
-    ///
-    /// Returns `Ok(Vec<UserActivity>)` with the user's activity on success, or an error on failure.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// * The HTTP request fails
-    /// * The API returns an error response
-    /// * The response cannot be deserialized
-    pub async fn execute(&self) -> Result<Vec<UserActivity>> {
-        let client = get_http_client(Some(DATA_API));
+/// Hard cap enforced by the Data API's `/activity` endpoint; requests with a
+/// larger `limit` 400 with `"max activity limit of 500 exceeded"`.
+const MAX_ACTIVITY_PAGE_LIMIT: i32 = 500;
 
+impl<'a> ActivityRequest<'a> {
+    fn build_web_service_request(&self, limit_override: Option<i32>) -> WebserviceRequest {
         let mut web_service_request = WebserviceRequest::new_activity_ws_request(self.user);
 
-        // Add optional parameters
-        if self.limit != 100 {
-            web_service_request.add_arg("limit".to_string(), self.limit.to_string());
+        let limit = limit_override.unwrap_or(self.limit);
+        if limit != 100 {
+            web_service_request.add_arg("limit".to_string(), limit.to_string());
         }
-        if self.offset != 0 {
+        if limit_override.is_none() && self.offset != 0 {
             web_service_request.add_arg("offset".to_string(), self.offset.to_string());
         }
 
@@ -197,6 +187,25 @@ impl<'a> ActivityRequest<'a> {
             web_service_request.add_arg("side".to_string(), side.as_str().to_string());
         }
 
+        web_service_request
+    }
+
+    /// Executes the activity request, fetching a single page.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(Vec<UserActivity>)` with the user's activity on success, or an error on failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// * The HTTP request fails
+    /// * The API returns an error response
+    /// * The response cannot be deserialized
+    pub async fn execute(&self) -> Result<Vec<UserActivity>> {
+        let client = get_http_client(Some(DATA_API));
+        let web_service_request = self.build_web_service_request(None);
+
         let callable_url = web_service_request.get_callable_url(0);
         log::debug!("Activity request URL: {}", callable_url);
 
@@ -204,6 +213,40 @@ impl<'a> ActivityRequest<'a> {
             .await?;
 
         Ok(result)
+    }
+
+    /// Executes the activity request, transparently paging through *all* matching
+    /// activity via offset-based pagination (`WebserviceRequest::fetch_batch`) until
+    /// a page comes back short of the page size.
+    ///
+    /// Ignores `self.limit`/`self.offset` — pages internally at
+    /// [`MAX_ACTIVITY_PAGE_LIMIT`], the API's hard per-request cap.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any page's request fails (network error, API error
+    /// response, or deserialization failure).
+    pub async fn execute_all(&self) -> Result<Vec<UserActivity>> {
+        let client = get_http_client(Some(DATA_API));
+        let web_service_request = self.build_web_service_request(Some(MAX_ACTIVITY_PAGE_LIMIT));
+
+        let mut all = Vec::new();
+        let mut next_offset = 0i32;
+        loop {
+            let (offset, page) = WebserviceRequest::fetch_batch::<UserActivityResponse>(
+                client,
+                &web_service_request,
+                next_offset,
+            )
+            .await?;
+            all.extend(page);
+            if offset < 0 {
+                break;
+            }
+            next_offset = offset;
+        }
+
+        Ok(all)
     }
 }
 
