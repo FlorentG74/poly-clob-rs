@@ -41,13 +41,16 @@ pub const DEFAULT_MAX_POLL_ATTEMPTS: u32 = 30;
 ///
 /// The gas limit must cover EVERY batched sub-call: an under-budgeted relayed call
 /// fails silently (RelayHub reports RelayedCallFailed while the outer tx still mines).
-/// A single redeem needs ~355k; the Polymarket UI scales linearly (~196k per redeem
-/// + ~160k base, e.g. 3 redeems -> ~748k), so we scale with the batch size and keep
-/// 500_000 as a single-call floor. An empty batch is treated as one call so the floor
-/// still applies.
+///
+/// The per-call budget is measured, not assumed. `eth_estimateGas` on single
+/// `redeemPositions` calls against REDEEM_ROUTER ranges from ~265k to ~472k depending
+/// on how many storage slots the payout touches, so a batch of 2 can need ~740k. The
+/// previous 220k/call figure came from the Polymarket UI's legacy-CTF path and left a
+/// 2-redeem batch (640k) short of its ~737k requirement. We budget 500k per sub-call
+/// plus a 200k base. An empty batch is treated as one call so it still gets a budget.
 pub fn proxy_gas_limit(num_transactions: usize) -> u64 {
     let n = (num_transactions.max(1)) as u64;
-    (220_000 * n + 200_000).max(500_000)
+    (500_000 * n + 200_000).max(500_000)
 }
 
 /// Client for interacting with the Polymarket Relayer API.
@@ -869,18 +872,24 @@ mod tests {
 
     #[test]
     fn test_proxy_gas_limit_floor_for_small_batches() {
-        // 0 and 1 sub-calls both clamp to the 500k floor.
-        // 220_000*1 + 200_000 = 420_000 < 500_000.
-        assert_eq!(proxy_gas_limit(0), 500_000);
-        assert_eq!(proxy_gas_limit(1), 500_000);
+        // An empty batch still gets a whole call's budget.
+        assert_eq!(proxy_gas_limit(0), 700_000);
+        assert_eq!(proxy_gas_limit(1), 700_000);
     }
 
     #[test]
     fn test_proxy_gas_limit_scales_linearly() {
-        // Above the floor, gas grows ~220k per redeem + 200k base.
-        assert_eq!(proxy_gas_limit(2), 640_000); // 440k + 200k
-        assert_eq!(proxy_gas_limit(3), 860_000); // 660k + 200k
-        assert_eq!(proxy_gas_limit(5), 1_300_000); // 1.1M + 200k
+        // Gas grows 500k per redeem + 200k base.
+        assert_eq!(proxy_gas_limit(2), 1_200_000);
+        assert_eq!(proxy_gas_limit(3), 1_700_000);
+        assert_eq!(proxy_gas_limit(5), 2_700_000);
+    }
+
+    #[test]
+    fn test_proxy_gas_limit_covers_worst_measured_batch() {
+        // Regression for the 2026-08-13 RelayedCallFailed: two loser redeems
+        // estimated at 471_882 + 265_178 = 737_060 against a 640_000 budget.
+        assert!(proxy_gas_limit(2) >= 737_060);
     }
 
     #[test]
