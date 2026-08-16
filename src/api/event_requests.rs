@@ -70,6 +70,12 @@ impl<'a> EventBySlugRequest<'a> {
 /// this queries `GET /events` filtered by `series_slug` so it finds whichever
 /// events are currently open regardless of when they were created.
 /// The first result whose `end_date > now` is the currently-running event.
+///
+/// `closed=false` alone is not enough: the 5m series carry ~15 stale events that ended months
+/// ago and were never flagged closed. Ordered by `end_date` ascending they occupy the head of
+/// every page, so a small `limit` returns nothing but zombies and no current event. The
+/// `end_date_min` floor drops them server-side while keeping a few minutes of slack, so the
+/// event that just ended — closed but not yet resolved — is still returned.
 #[derive(TypedBuilder)]
 pub struct SeriesEventsRequest<'a> {
     /// Series slug (e.g. `"btc-up-or-down-hourly"`)
@@ -79,6 +85,10 @@ pub struct SeriesEventsRequest<'a> {
     #[builder(default = 20)]
     pub limit: i32,
 }
+
+/// How far back the `end_date_min` floor reaches, so an event that has ended but not yet
+/// resolved stays in the result while long-dead never-closed events are filtered out.
+const RECENTLY_ENDED_SLACK: chrono::TimeDelta = chrono::TimeDelta::minutes(10);
 
 impl<'a> SeriesEventsRequest<'a> {
     /// Execute the request and return events ordered by end date ascending
@@ -102,6 +112,12 @@ impl<'a> SeriesEventsRequest<'a> {
         req.add_arg("order".to_string(), "endDate".to_string());
         req.add_arg("ascending".to_string(), "true".to_string());
         req.add_arg("closed".to_string(), "false".to_string());
+        req.add_arg(
+            "end_date_min".to_string(),
+            (chrono::Utc::now() - RECENTLY_ENDED_SLACK)
+                .format("%Y-%m-%dT%H:%M:%SZ")
+                .to_string(),
+        );
         req.add_arg("limit".to_string(), self.limit.to_string());
 
         WebserviceRequest::fetch_one::<Vec<Event>>(client, &req).await

@@ -391,56 +391,77 @@ pub async fn fetch_market_by_slug(slug: &str) -> Result<PolyResponseMarket> {
         .await
 }
 
-/// Fetches markets by condition IDs and returns them as a HashMap.
+/// Which id a market lookup keys on. Both are list filters, so both need the two-pass in
+/// [`fetch_markets_any_state`].
+#[derive(Clone, Copy)]
+pub enum MarketKey {
+    ConditionId,
+    TokenId,
+}
+
+impl MarketKey {
+    /// Does this market answer to `id` under this key?
+    fn matches(self, market: &PolyResponseMarket, id: &str) -> bool {
+        match self {
+            Self::ConditionId => market.condition_id.as_deref() == Some(id),
+            Self::TokenId => market.clob_token_ids.iter().any(|t| t == id),
+        }
+    }
+
+    fn apply(self, builder: MarketsRequest, ids: Vec<String>) -> MarketsRequest {
+        let limit = ids.len() as i32;
+        match self {
+            Self::ConditionId => MarketsRequest { condition_ids: ids, limit, ..builder },
+            Self::TokenId => MarketsRequest { clob_token_ids: ids, limit, ..builder },
+        }
+    }
+}
+
+/// Fetches markets by condition id or CLOB token id **at any lifecycle stage**.
 ///
-/// # Arguments
+/// Gamma's *listing* endpoints (`/markets`, `/markets/keyset`) apply `closed=false` when the
+/// caller omits `closed`, so a single filter-less query silently drops every settled market —
+/// including the whole window between a market's `end_date` and its resolution, which can run
+/// several minutes. There is no one-shot escape: `closed=all` / `closed=null` are rejected
+/// (422), and an empty or repeated `closed` still falls back to open-only. Only the
+/// single-resource forms (`/markets/{id}`, `/markets/slug/{slug}`) and the `/events` endpoints
+/// are stage-independent, and neither can be keyed on a condition or token id.
 ///
-/// * `condition_ids` - Slice of condition IDs to fetch markets for
-///
-/// # Returns
-///
-/// Returns a HashMap mapping condition IDs to PolyResponseMarket data.
+/// So: run the open pass, then re-query whatever is still missing with `closed=true`. A market
+/// comes back whether it is live, closed-pending-resolution, or resolved.
+pub async fn fetch_markets_any_state(
+    key: MarketKey,
+    ids: &[String],
+) -> Result<Vec<PolyResponseMarket>> {
+    let mut out: Vec<PolyResponseMarket> = Vec::new();
+
+    for chunk in ids.chunks(100) {
+        for closed in [None, Some(true)] {
+            let missing: Vec<String> = chunk
+                .iter()
+                .filter(|id| !out.iter().any(|m| key.matches(m, id)))
+                .cloned()
+                .collect();
+            if missing.is_empty() {
+                break;
+            }
+            let builder = MarketsRequest::builder().closed(closed).build();
+            out.extend(key.apply(builder, missing).execute().await?.data);
+        }
+    }
+
+    Ok(out)
+}
+
+/// Fetches markets by condition id at any lifecycle stage, keyed by condition id.
 pub async fn map_multiple_market_by_condition_ids_ws(
     condition_ids: &[String],
 ) -> Result<HashMap<String, PolyResponseMarket>> {
-    let mut markets_map: HashMap<String, PolyResponseMarket> = HashMap::new();
-
-    let markets = MarketsRequest::builder()
-        .condition_ids(condition_ids.to_vec())
-        .build()
-        .execute()
-        .await?;
-
-    for m in markets.data.into_iter() {
-        if let Some(condition_id) = m.condition_id.clone() {
-            markets_map.insert(condition_id, m);
-        }
-    }
-
-    // The gamma API excludes closed markets by default (closed=false). Retry any missing
-    // condition_ids with closed=true to pick up resolved markets.
-    let missing: Vec<String> = condition_ids
-        .iter()
-        .filter(|id| !markets_map.contains_key(*id))
-        .map(|s| s.to_string())
-        .collect();
-
-    if !missing.is_empty() {
-        let closed_markets = MarketsRequest::builder()
-            .condition_ids(missing)
-            .closed(Some(true))
-            .build()
-            .execute()
-            .await?;
-
-        for m in closed_markets.data.into_iter() {
-            if let Some(condition_id) = m.condition_id.clone() {
-                markets_map.insert(condition_id, m);
-            }
-        }
-    }
-
-    Ok(markets_map)
+    Ok(fetch_markets_any_state(MarketKey::ConditionId, condition_ids)
+        .await?
+        .into_iter()
+        .filter_map(|m| m.condition_id.clone().map(|cid| (cid, m)))
+        .collect())
 }
 
 // ============================================================================
