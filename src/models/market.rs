@@ -214,3 +214,102 @@ impl KeysetApiResponse for KeysetMarketsResponse {
         self.next_cursor.as_deref()
     }
 }
+
+// ============================================================================
+// ClobMarket - the CLOB API's `/markets/{condition_id}` single-resource shape
+// ============================================================================
+
+/// One outcome token of a [`ClobMarket`].
+///
+/// `price` and `winner` are deliberately **private**: this type backs a long-lived
+/// metadata cache (see `MarketPositionsController`), so any price read off it would be
+/// stale by up to the market's whole duration. Live prices come from the order book
+/// (`apply_live_prices_if_requested`) and published resolutions from
+/// `market_settlement`; neither goes through here. Keeping the fields unreachable makes
+/// that a compile error rather than a subtle mispricing.
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct ClobToken {
+    pub token_id: String,
+    pub outcome: String,
+    #[allow(dead_code)]
+    price: f64,
+    #[allow(dead_code)]
+    winner: bool,
+}
+
+/// A market as returned by the CLOB's `/markets/{condition_id}` endpoint.
+///
+/// Unlike gamma's listing endpoints — which apply `closed=false` by default and can miss a
+/// short-lived market for its entire lifetime — the CLOB serves any market it accepts orders
+/// for, immediately and at any lifecycle stage. This is the authoritative source for the
+/// immutable metadata (question, slug, token→outcome mapping) a held position needs to render.
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct ClobMarket {
+    pub condition_id: String,
+    pub question: String,
+    pub market_slug: String,
+    /// RFC-3339. Note the CLOB reports this as the *event day* rollover for recurring
+    /// intraday markets, not the individual window's close.
+    pub end_date_iso: Option<String>,
+    pub tokens: Vec<ClobToken>,
+}
+
+impl ClobMarket {
+    /// The outcome name ("Up" / "Down" / …) for `token_id`, if this market holds it.
+    pub fn outcome_for_token(&self, token_id: &str) -> Option<&str> {
+        self.tokens
+            .iter()
+            .find(|t| t.token_id == token_id)
+            .map(|t| t.outcome.as_str())
+    }
+}
+
+impl ApiResponse for ClobMarket {
+    fn nb_results(&self) -> usize {
+        0 // Single market response
+    }
+}
+
+#[cfg(test)]
+mod clob_market_tests {
+    use super::*;
+
+    /// Trimmed capture of a real `GET clob.polymarket.com/markets/{condition_id}` response
+    /// (eth-updown-5m, Aug 19 2026) — the exact market gamma's listing endpoint failed to
+    /// return for its whole lifetime.
+    const CAPTURE: &str = r#"{
+        "condition_id": "0x9eb18aded66332f579d606f0d9399ffbd680f366bddfddb8a0e1878f90407685",
+        "question_id": "0x95bd76984e2e4317ddfe95f23d5c151768d79bac6103646312e3f9bcd34b244f",
+        "question": "Ethereum Up or Down - August 19, 5:05AM-5:10AM ET",
+        "market_slug": "eth-updown-5m-1787130300",
+        "end_date_iso": "2026-08-19T00:00:00Z",
+        "closed": true,
+        "tokens": [
+            {"token_id": "59698098977111906550687924409636834067516700982846510488718568126341509195345",
+             "outcome": "Up", "price": 0, "winner": false},
+            {"token_id": "17339602082358126254674486477378227513153577250956102310840282339776999176209",
+             "outcome": "Down", "price": 1, "winner": true}
+        ]
+    }"#;
+
+    #[test]
+    fn deserializes_real_clob_payload() {
+        let m: ClobMarket = serde_json::from_str(CAPTURE).expect("CLOB payload should parse");
+        assert_eq!(m.market_slug, "eth-updown-5m-1787130300");
+        assert_eq!(m.question, "Ethereum Up or Down - August 19, 5:05AM-5:10AM ET");
+        assert_eq!(m.end_date_iso.as_deref(), Some("2026-08-19T00:00:00Z"));
+        assert_eq!(m.tokens.len(), 2);
+    }
+
+    #[test]
+    fn maps_token_id_to_outcome_name() {
+        let m: ClobMarket = serde_json::from_str(CAPTURE).unwrap();
+        assert_eq!(
+            m.outcome_for_token(
+                "17339602082358126254674486477378227513153577250956102310840282339776999176209"
+            ),
+            Some("Down")
+        );
+        assert_eq!(m.outcome_for_token("not-a-token"), None);
+    }
+}

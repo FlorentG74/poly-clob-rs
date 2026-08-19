@@ -52,9 +52,9 @@ use typed_builder::TypedBuilder;
 
 use crate::api::http_client::get_http_client;
 use crate::PolyResponseMarket;
-use crate::models::KeysetMarketsResponse;
+use crate::models::{ClobMarket, KeysetMarketsResponse};
 
-use super::{GAMMA_API, GET_MARKETS, GET_MARKETS_KEYSET, WITH_SLUG};
+use super::{CLOB_API, GAMMA_API, GET_MARKET, GET_MARKETS, GET_MARKETS_KEYSET, WITH_SLUG};
 
 // ============================================================================
 // MarketBySlugRequest - for fetching a single market by slug
@@ -451,6 +451,35 @@ pub async fn fetch_markets_any_state(
     }
 
     Ok(out)
+}
+
+/// Fetches one market from the **CLOB** by condition id, at any lifecycle stage.
+///
+/// Prefer this over the gamma condition-id lookups ([`map_multiple_market_by_condition_ids_ws`])
+/// whenever only *metadata* is needed. Gamma's listing endpoints are an asynchronously-indexed
+/// read replica: they hide closed markets unless `closed=true` is asked for, and for short-lived
+/// (e.g. 5-minute) markets they can miss a condition id for its entire lifetime. The CLOB knows
+/// every market it accepts orders for, so this returns immediately and unconditionally.
+///
+/// Returns metadata only — [`ClobMarket`] deliberately exposes no prices. Live prices come from
+/// the order book; published resolutions from the settlement path.
+pub async fn get_clob_market_by_condition_id(condition_id: &str) -> Result<ClobMarket> {
+    let client = get_http_client(Some(CLOB_API));
+
+    let web_service_request = super::webservice_request::WebserviceRequest {
+        api: CLOB_API.to_string(),
+        url: format!("{}{}", GET_MARKET, condition_id),
+        method: Method::GET,
+        with_pagination: false,
+        args: Vec::new(),
+        body: None,
+    };
+
+    super::webservice_request::WebserviceRequest::fetch_one::<ClobMarket>(
+        client,
+        &web_service_request,
+    )
+    .await
 }
 
 /// Fetches markets by condition id at any lifecycle stage, keyed by condition id.
