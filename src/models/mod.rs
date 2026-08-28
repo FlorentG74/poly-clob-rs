@@ -38,8 +38,8 @@
 //!     .maker(&account.poly_address)
 //!     .signer(&account.poly_address)
 //!     .token_id("token_id")
-//!     .maker_amount(100)
-//!     .taker_amount(50)
+//!     .maker_amount(100u64)
+//!     .taker_amount(50u64)
 //!     .side(Side::Buy)
 //!     .order_type(OrderType::GTC)
 //!     .build();
