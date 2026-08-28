@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 pub static GAMMA_API: &str = "https://gamma-api.polymarket.com";
 pub static CLOB_API: &str = "https://clob.polymarket.com";
 pub static DATA_API: &str = "https://data-api.polymarket.com";

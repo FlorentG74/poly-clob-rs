@@ -327,11 +327,11 @@ pub fn derive_proxy_address(eoa: &Address) -> Address {
 ///
 /// Then signed with `eth_sign` mode (`signMessage` adds Ethereum prefix).
 /// Returns the packed signature as hex with 0x prefix (r + s + v, no v adjustment).
-#[allow(clippy::too_many_arguments)]
 ///
 /// # Errors
 ///
 /// If the struct hash cannot be computed from the supplied fields, or signing fails.
+#[allow(clippy::too_many_arguments)]
 pub async fn sign_proxy_transaction(
     signer: &PrivateKeySigner,
     from: &Address,
