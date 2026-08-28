@@ -122,6 +122,18 @@ pub fn apply_split_tunnel(builder: ClientBuilder) -> ClientBuilder {
 /// * `SPLIT_TUNNEL_IFACE` - Network interface name used for Polymarket requests
 ///   (e.g. `wireguard-es`). If unset, Polymarket requests use default routing.
 ///
+/// # One runtime per process
+///
+/// Both clients are process-global and keep idle pooled connections, but a hyper
+/// connection's dispatch task lives on the Tokio runtime that created it. Sharing these
+/// clients across **multiple** runtimes therefore hands out connections whose runtime has
+/// already been dropped, and the request fails with
+/// `client error (SendRequest): dispatch task is gone: runtime dropped the dispatch task`.
+///
+/// Every binary here runs a single runtime, so this only bites test harnesses: a
+/// `#[tokio::test]` builds and drops a runtime per test. Tests that make requests must
+/// share one long-lived runtime — see `core_services::test_runtime`.
+///
 /// # Panics
 ///
 /// Panics if either HTTP client cannot be created (extremely unlikely in practice).
