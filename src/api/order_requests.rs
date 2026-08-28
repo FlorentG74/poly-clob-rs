@@ -41,8 +41,8 @@ use crate::constants::raw_multiplier_decimal;
 /// * **Token amounts** (size): maximum 2 decimal places
 ///
 /// This library automatically rounds amounts to comply with these limits:
-/// * For BUY orders: maker_amount (USDC) is rounded to 4 decimals, taker_amount (tokens) to 2 decimals
-/// * For SELL orders: maker_amount (tokens) is rounded to 2 decimals, taker_amount (USDC) to 4 decimals
+/// * For BUY orders: `maker_amount` (USDC) is rounded to 4 decimals, `taker_amount` (tokens) to 2 decimals
+/// * For SELL orders: `maker_amount` (tokens) is rounded to 2 decimals, `taker_amount` (USDC) to 4 decimals
 ///
 /// # Order Types
 ///
@@ -134,6 +134,11 @@ impl<'a> LimitOrderRequest<'a> {
     /// * Expiration is non-zero for FOK/FAK/GTC orders
     /// * Expiration is zero for GTD orders
     /// * Order size validation fails (BUY orders: USD amount must be > $1.0 AND token quantity must be >= 5)
+    ///
+    /// # Panics
+    ///
+    /// If the scaled maker/taker amount overflows `i32`. The size validation above bounds
+    /// the order well below that, so this is unreachable for any order that gets this far.
     pub async fn build(&self) -> Result<Order> {
         // Validate expiration based on order type
         match self.order_type {
@@ -386,6 +391,11 @@ pub struct OrderStatusResponse {
 ///
 /// # Returns
 /// `Ok(OrderStatusResponse)` with the order's current status, or an error.
+///
+/// # Errors
+///
+/// If signing fails, the request fails, or the API returns a non-success status or an
+/// unparseable body.
 pub async fn get_order_by_id(signer: &Account, order_id: &str) -> Result<OrderStatusResponse> {
     // The full path (including order_id) must be signed — Python reference:
     // endpoint = GET_ORDER + order_id; request_path=endpoint → build_hmac_signature
@@ -405,11 +415,19 @@ pub async fn get_order_by_id(signer: &Account, order_id: &str) -> Result<OrderSt
 }
 
 /// Returns all open orders for the given account.
+///
+/// # Errors
+///
+/// If signing fails, or the API request/deserialization does.
 pub async fn get_all_open_orders(signer: &Account) -> Result<Vec<OpenOrder>> {
     get_open_orders_by_market(signer, "").await
 }
 
 /// Returns open orders for the given account, optionally filtered by market.
+///
+/// # Errors
+///
+/// If signing fails, or the API request/deserialization does.
 pub async fn get_open_orders_by_market(signer: &Account, market_id: &str) -> Result<Vec<OpenOrder>> {
     let market_orders = fetch_raw_orders(signer, market_id).await?;
 
@@ -475,7 +493,7 @@ fn extract_unique_condition_ids(orders: &[crate::MarketOrder]) -> Vec<String> {
     condition_ids
 }
 
-/// Parses a raw market order into an OpenOrder with market data.
+/// Parses a raw market order into an `OpenOrder` with market data.
 fn parse_market_order(
     order: crate::MarketOrder,
     market: crate::PolyResponseMarket,
@@ -525,10 +543,10 @@ mod tests {
     // Auth integration tests
     // -------------------------------------------------------------------------
 
-    /// Verifies that get_order_by_id() auth works end-to-end.
+    /// Verifies that `get_order_by_id()` auth works end-to-end.
     /// A non-401 response (including 404 "not found") means the HMAC was accepted.
     ///
-    /// Run with: cargo test -p poly-clob-rs test_order_status_auth_live -- --nocapture
+    /// Run with: cargo test -p poly-clob-rs `test_order_status_auth_live` -- --nocapture
     #[tokio::test]
     async fn test_order_status_auth_live() {
         crate::config::init_from_env();
@@ -618,8 +636,8 @@ mod tests {
         // size_matched == 0.0 → no partial fill, bot should continue waiting
     }
 
-    /// Live order with partial fill: size_matched > 0 but status still "live".
-    /// check_pending_order treats this as fully filled and cancels the remainder.
+    /// Live order with partial fill: `size_matched` > 0 but status still "live".
+    /// `check_pending_order` treats this as fully filled and cancels the remainder.
     #[test]
     fn test_order_status_live_partial_fill() {
         let json = r#"{
@@ -643,8 +661,8 @@ mod tests {
     }
 
     /// Missing price field: #[serde(default)] fills it with "".
-    /// parse::<f64>() on "" fails → fallback to limit_price.
-    /// This ensures entry_price is never 0.0 when the limit price is known.
+    /// `parse::`<f64>() on "" fails → fallback to `limit_price`.
+    /// This ensures `entry_price` is never 0.0 when the limit price is known.
     #[test]
     fn test_order_status_missing_price_falls_back_to_limit_price() {
         let json = r#"{
@@ -666,7 +684,7 @@ mod tests {
         assert!(fill_price > 0.0, "fill_price must never be 0.0");
     }
 
-    /// Cancelled order: pending_order should be cleared, no fill recorded.
+    /// Cancelled order: `pending_order` should be cleared, no fill recorded.
     #[test]
     fn test_order_status_cancelled_deserialization() {
         let json = r#"{

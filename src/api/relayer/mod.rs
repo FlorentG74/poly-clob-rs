@@ -56,8 +56,8 @@
 //! Polymarket supports three wallet/signature types:
 //!
 //! - **EOA (0)**: Standard Ethereum wallet. The funder pays gas.
-//! - **POLY_PROXY (1)**: Magic Link/Google login proxy wallet.
-//! - **GNOSIS_SAFE (2)**: Gnosis Safe multisig wallet (most common).
+//! - **`POLY_PROXY` (1)**: Magic Link/Google login proxy wallet.
+//! - **`GNOSIS_SAFE` (2)**: Gnosis Safe multisig wallet (most common).
 //!
 //! Set the wallet type via the `SIGNATURE_TYPE` environment variable or
 //! the `signature_type` field on the client.

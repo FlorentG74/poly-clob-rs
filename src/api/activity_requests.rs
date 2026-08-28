@@ -24,6 +24,7 @@ pub enum ActivityType {
 }
 
 impl ActivityType {
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             ActivityType::TRADE => "TRADE",
@@ -45,6 +46,7 @@ pub enum ActivitySortBy {
 }
 
 impl ActivitySortBy {
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             ActivitySortBy::TIMESTAMP => "TIMESTAMP",
@@ -62,6 +64,7 @@ pub enum ActivitySide {
 }
 
 impl ActivitySide {
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             ActivitySide::BUY => "BUY",
@@ -251,6 +254,7 @@ impl<'a> ActivityRequest<'a> {
 }
 
 impl WebserviceRequest {
+    #[must_use]
     pub fn new_activity_ws_request(user: &str) -> Self {
         let args = vec![("user".to_string(), user.to_string())];
 

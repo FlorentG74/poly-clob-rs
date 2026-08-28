@@ -20,6 +20,7 @@ pub struct WebserviceRequest {
 }
 
 impl WebserviceRequest {
+    #[must_use]
     pub fn get_limit(&self) -> i32 {
         for (name, value) in self.args.iter() {
             if name.eq("limit") {
@@ -33,6 +34,7 @@ impl WebserviceRequest {
         self.args.push((name, value));
     }
 
+    #[must_use]
     pub fn get_callable_url(&self, next_offset: i32) -> String {
         let api = &self.api;
         let url = &self.url;
@@ -50,6 +52,7 @@ impl WebserviceRequest {
         callable_url
     }
 
+    #[must_use]
     pub fn get_body(&self) -> Option<String> {
         self.body.clone()
     }
@@ -57,7 +60,7 @@ impl WebserviceRequest {
     /// Fetch data from API with pagination support.
     ///
     /// This function makes HTTP requests with automatic retry logic for rate limits and transient errors.
-    /// Returns a tuple of (next_offset, optional_data) where next_offset is -1 if no more pages exist.
+    /// Returns a tuple of (`next_offset`, `optional_data`) where `next_offset` is -1 if no more pages exist.
     ///
     /// # Arguments
     ///
@@ -96,7 +99,12 @@ impl WebserviceRequest {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn fetch_batch<T>(
+    ///
+/// # Errors
+///
+/// If the request fails, the API returns a non-success status, or the body does not
+/// deserialize into the expected shape.
+pub async fn fetch_batch<T>(
         client: &Client,
         web_service_request: &WebserviceRequest,
         next_offset: i32,
@@ -223,7 +231,12 @@ impl WebserviceRequest {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn fetch_one<T>(client: &Client, web_service_request: &WebserviceRequest) -> crate::Result<T>
+    ///
+/// # Errors
+///
+/// If the request fails, the API returns a non-success status, or the body does not
+/// deserialize into the expected shape.
+pub async fn fetch_one<T>(client: &Client, web_service_request: &WebserviceRequest) -> crate::Result<T>
     where
         T: for<'a> serde::Deserialize<'a>,
     {
@@ -302,6 +315,7 @@ impl WebserviceRequest {
     /// Unlike [`get_callable_url`], this method does **not** inject an `offset`
     /// parameter. Instead it appends `after_cursor` when a cursor is provided.
     /// Other query params from `self.args` are appended as usual.
+    #[must_use]
     pub fn get_keyset_url(&self, cursor: Option<&str>) -> String {
         let api = &self.api;
         let url = &self.url;
@@ -363,7 +377,12 @@ impl WebserviceRequest {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn fetch_keyset<T>(
+    ///
+/// # Errors
+///
+/// If the request fails, the API returns a non-success status, or the body does not
+/// deserialize into the expected shape.
+pub async fn fetch_keyset<T>(
         client: &Client,
         web_service_request: &WebserviceRequest,
         cursor: Option<&str>,

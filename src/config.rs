@@ -62,6 +62,13 @@ pub fn init(config: Config) -> bool {
 /// caller's decision. Applications in this workspace go through
 /// `core_services::controller::config::init_from_env`, which also installs the
 /// application config.
+///
+/// Returns whether this call performed the install, for callers that care.
+#[allow(
+    clippy::must_use_candidate,
+    reason = "called for its effect on the config singleton; the install flag is incidental, and \
+              sibling `init` is unmarked for the same reason"
+)]
 pub fn init_from_env() -> bool {
     dotenvy::dotenv().ok();
     init(Config::from_env())
@@ -127,6 +134,7 @@ impl Config {
     /// Does **not** load `.env` — call `dotenvy::dotenv()` first if that is where the
     /// values live. Unset, empty and whitespace-only values all read as absent, so a
     /// blank entry means "not configured" rather than an empty credential.
+    #[must_use]
     pub fn from_env() -> Self {
         Self {
             poly_address: var("POLY_ADDRESS"),
@@ -158,6 +166,10 @@ impl Config {
     ///
     /// `var_name` is the environment variable the value conventionally comes from, used
     /// only to make the error actionable.
+    ///
+    /// # Errors
+    ///
+    /// [`AuthError::MissingEnvVar`] naming `var_name`, if `field` is `None`.
     pub fn require(&self, field: &Option<String>, var_name: &str) -> Result<String> {
         field.clone().ok_or_else(|| {
             AuthError::MissingEnvVar {

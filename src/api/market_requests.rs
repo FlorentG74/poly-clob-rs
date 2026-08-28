@@ -252,6 +252,11 @@ impl MarketsRequest {
     /// Returns a [`KeysetMarketsResponse`] whose `next_cursor` field indicates
     /// whether more pages exist. Pass it back via [`MarketsRequest::cursor`] to
     /// fetch the next page.
+    ///
+    /// # Errors
+    ///
+    /// If the request fails, the API returns a non-success status, or the body does not
+    /// deserialize into the expected shape.
     pub async fn execute(&self) -> Result<KeysetMarketsResponse> {
         let client = get_http_client(Some(GAMMA_API));
 
@@ -383,6 +388,10 @@ impl MarketsRequest {
 /// # Returns
 ///
 /// Returns the market data if found, or an error if not.
+///
+/// # Errors
+///
+/// If the request fails, or gamma returns no market for `slug`.
 pub async fn fetch_market_by_slug(slug: &str) -> Result<PolyResponseMarket> {
     MarketBySlugRequest::builder()
         .slug(slug)
@@ -429,6 +438,11 @@ impl MarketKey {
 ///
 /// So: run the open pass, then re-query whatever is still missing with `closed=true`. A market
 /// comes back whether it is live, closed-pending-resolution, or resolved.
+///
+/// # Errors
+///
+/// If the request fails, the API returns a non-success status, or the body does not
+/// deserialize into the expected shape.
 pub async fn fetch_markets_any_state(
     key: MarketKey,
     ids: &[String],
@@ -454,6 +468,11 @@ pub async fn fetch_markets_any_state(
 }
 
 /// Fetches markets by condition id at any lifecycle stage, keyed by condition id.
+///
+/// # Errors
+///
+/// If the request fails, the API returns a non-success status, or the body does not
+/// deserialize into the expected shape.
 pub async fn map_multiple_market_by_condition_ids_ws(
     condition_ids: &[String],
 ) -> Result<HashMap<String, PolyResponseMarket>> {

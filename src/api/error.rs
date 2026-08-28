@@ -137,6 +137,7 @@ impl ClobError {
     ///
     /// assert!(err.is_retryable());
     /// ```
+    #[must_use]
     pub fn is_retryable(&self) -> bool {
         match self {
             ClobError::Http(e) => e.is_retryable(),
@@ -165,6 +166,7 @@ impl ClobError {
     ///
     /// assert_eq!(err.retry_after(), Some(Duration::from_secs(60)));
     /// ```
+    #[must_use]
     pub fn retry_after(&self) -> Option<Duration> {
         match self {
             ClobError::Http(e) => e.retry_after(),
@@ -175,6 +177,7 @@ impl ClobError {
     }
 
     /// Returns the URL associated with this error, if available.
+    #[must_use]
     pub fn url(&self) -> Option<&str> {
         match self {
             ClobError::Http(e) => e.url(),
@@ -190,14 +193,14 @@ impl ClobError {
     /// (retrying immediately won't help), but the strategy shouldn't halt.
     ///
     /// Includes:
-    /// - FOK/FAK orders that couldn't fill (OrderNotFillable)
-    /// - Market not ready to accept orders (MarketNotReady)
-    /// - Order delayed due to market conditions (OrderDelayed)
-    /// - Post-only orders that would cross the book (PostOnlyCrossesBook)
-    /// - Insufficient balance (InsufficientBalance)
-    /// - Invalid order sizes or tick sizes (InvalidOrderSize, InvalidTickSize)
-    /// - Invalid expirations (InvalidExpiration)
-    /// - Duplicate orders (DuplicateOrder)
+    /// - FOK/FAK orders that couldn't fill (`OrderNotFillable`)
+    /// - Market not ready to accept orders (`MarketNotReady`)
+    /// - Order delayed due to market conditions (`OrderDelayed`)
+    /// - Post-only orders that would cross the book (`PostOnlyCrossesBook`)
+    /// - Insufficient balance (`InsufficientBalance`)
+    /// - Invalid order sizes or tick sizes (`InvalidOrderSize`, `InvalidTickSize`)
+    /// - Invalid expirations (`InvalidExpiration`)
+    /// - Duplicate orders (`DuplicateOrder`)
     ///
     /// # Examples
     ///
@@ -212,6 +215,7 @@ impl ClobError {
     ///
     /// assert!(err.is_recoverable_order_error());
     /// ```
+    #[must_use]
     pub fn is_recoverable_order_error(&self) -> bool {
         match self {
             ClobError::Api(api_err) => api_err.is_recoverable_order_error(),
@@ -266,7 +270,7 @@ pub enum HttpError {
 }
 
 impl HttpError {
-    /// Create HttpError from reqwest::Error with URL context.
+    /// Create `HttpError` from `reqwest::Error` with URL context.
     ///
     /// This helper is used when we have a URL to provide better context.
     pub fn from_reqwest(err: reqwest::Error, url: impl Into<String>) -> Self {
@@ -289,6 +293,7 @@ impl HttpError {
 
 impl HttpError {
     /// Returns true if this error is transient and retryable.
+    #[must_use]
     pub fn is_retryable(&self) -> bool {
         match self {
             HttpError::Timeout { .. } => true,
@@ -302,6 +307,7 @@ impl HttpError {
     }
 
     /// Returns suggested retry delay.
+    #[must_use]
     pub fn retry_after(&self) -> Option<Duration> {
         if self.is_retryable() {
             Some(Duration::from_secs(1))
@@ -311,6 +317,7 @@ impl HttpError {
     }
 
     /// Returns the URL associated with this error.
+    #[must_use]
     pub fn url(&self) -> Option<&str> {
         match self {
             HttpError::RequestFailed { url, .. } => Some(url),
@@ -502,6 +509,7 @@ pub enum ApiError {
 
 impl ApiError {
     /// Returns true if this error is transient and retryable.
+    #[must_use]
     pub fn is_retryable(&self) -> bool {
         match self {
             ApiError::RateLimited { .. } => true,
@@ -512,6 +520,7 @@ impl ApiError {
     }
 
     /// Returns suggested retry delay.
+    #[must_use]
     pub fn retry_after(&self) -> Option<Duration> {
         match self {
             ApiError::RateLimited { retry_after, .. } => Some(*retry_after),
@@ -524,6 +533,7 @@ impl ApiError {
     }
 
     /// Returns the URL associated with this error.
+    #[must_use]
     pub fn url(&self) -> Option<&str> {
         match self {
             ApiError::RateLimited { url, .. } => Some(url),
@@ -550,6 +560,7 @@ impl ApiError {
     ///
     /// These errors indicate temporary conditions where an order cannot be placed,
     /// but the trading strategy should continue (skip this order and try again later).
+    #[must_use]
     pub fn is_recoverable_order_error(&self) -> bool {
         matches!(
             self,
@@ -727,11 +738,13 @@ pub enum RelayerError {
 
 impl RelayerError {
     /// Returns true if this error is retryable.
+    #[must_use]
     pub fn is_retryable(&self) -> bool {
         matches!(self, RelayerError::PollingTimeout { .. } | RelayerError::InvalidNonce { .. })
     }
 
     /// Returns suggested retry delay.
+    #[must_use]
     pub fn retry_after(&self) -> Option<Duration> {
         if self.is_retryable() {
             Some(Duration::from_secs(1))

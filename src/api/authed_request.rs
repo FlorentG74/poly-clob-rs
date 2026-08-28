@@ -45,6 +45,11 @@ pub fn append_signature_type(url: &mut String, signature_type: i32) {
 /// `sign_path` is the request path used for HMAC signing (may differ from the URL
 /// path, e.g. when a resource id is part of the signed path). `salt` is the 5th
 /// `build_l2_headers` argument (timestamp/salt); pass `""` when not required.
+///
+/// # Errors
+///
+/// If the L2 headers cannot be built, the request fails, or the API returns a
+/// non-success status.
 pub async fn send_authed(
     signer: &Account,
     method: Method,
@@ -75,6 +80,11 @@ pub async fn send_authed(
 
 /// Like [`send_authed`], but returns the response body as text via
 /// [`handle_api_response`]. Use for requests that don't need the raw response.
+///
+/// # Errors
+///
+/// If the L2 headers cannot be built, the request fails, or the API returns a
+/// non-success status.
 pub async fn send_authed_text(
     signer: &Account,
     method: Method,

@@ -8,6 +8,10 @@ pub const HOUR_MILLIS: i64 = DAY_MILLIS / 24;
 pub const MINUTE_MILLIS: i64 = HOUR_MILLIS / 60;
 pub const SECOND_MILLIS: i64 = 1000;
 
+///
+/// # Errors
+///
+/// If `millis` is outside the range `NaiveDateTime` can represent.
 pub fn timestamp_to_datetime(millis: i64) -> Result<chrono::NaiveDateTime> {
     DateTime::from_timestamp_millis(millis)
         .map(|dt| dt.naive_utc())
@@ -20,11 +24,16 @@ pub fn timestamp_to_datetime(millis: i64) -> Result<chrono::NaiveDateTime> {
         })
 }
 
+#[must_use]
 pub fn offset_current_time(offset: i64) -> i64 {
     let ts: DateTime<Utc> = Utc::now();
     ts.timestamp_millis() + offset
 }
 
+///
+/// # Errors
+///
+/// If `string_ts` is not a parseable timestamp.
 pub fn format_redis_ts(string_ts: &str) -> Result<i64> {
     let ts_vec: Vec<&str> = string_ts.split('-').collect();
     let ts_str = ts_vec.first().ok_or_else(|| SerializationError::FieldParse {
@@ -41,6 +50,10 @@ pub fn format_redis_ts(string_ts: &str) -> Result<i64> {
     })
 }
 
+///
+/// # Errors
+///
+/// If `input` is `Some` but does not parse as a timestamp. `None` is `Ok(None)`.
 pub fn convert_string_to_nullable_time(input: Option<&String>) -> Result<Option<DateTime<Utc>>> {
     match input {
         Some(str_date) => {

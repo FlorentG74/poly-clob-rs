@@ -115,6 +115,10 @@ pub struct Order {
 }
 
 impl Order {
+    ///
+    /// # Errors
+    ///
+    /// If the order fields cannot be serialized into the query body.
     pub fn build_order_query_body(
         &self,
         salt: &str,
@@ -155,6 +159,10 @@ impl Order {
         })
     }
 
+    ///
+    /// # Errors
+    ///
+    /// A [`ValidationError`] naming the first field that fails its bounds check.
     pub fn validate_order(&self) -> Result<()> {
         //for buy orders, token quantity should be >= MIN_POLY_TOKEN_QUANTITY and USD amount should be >= 1.0
         if self.side == Side::Buy

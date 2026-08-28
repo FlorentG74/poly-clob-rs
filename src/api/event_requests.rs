@@ -10,6 +10,7 @@ use crate::models::market::Event;
 
 impl WebserviceRequest {
     /// Build a request to fetch events by ID via the keyset endpoint.
+    #[must_use]
     pub fn new_event_by_id_request(id: &str) -> Self {
         WebserviceRequest {
             api: GAMMA_API.to_string(),
@@ -23,6 +24,7 @@ impl WebserviceRequest {
 }
 
 /// Request builder for fetching a single event by slug.
+///
 /// The events endpoint returns complete market data including token IDs,
 /// unlike the markets endpoint which may return incomplete data for recurring markets.
 #[derive(TypedBuilder)]
@@ -32,6 +34,11 @@ pub struct EventBySlugRequest<'a> {
 }
 
 impl<'a> EventBySlugRequest<'a> {
+    ///
+    /// # Errors
+    ///
+    /// If the request fails, the API returns a non-success status, or the body does not
+    /// deserialize into the expected shape.
     pub async fn execute(&self) -> Result<PolyResponseEvent> {
         let client = get_http_client(Some(GAMMA_API));
 
@@ -94,8 +101,13 @@ impl<'a> SeriesEventsRequest<'a> {
     /// Execute the request and return events ordered by end date ascending
     /// (as requested from the API; no client-side sort).
     ///
-    /// The `order` field must be the API's camelCase name: gamma rejects the snake_case
+    /// The `order` field must be the API's camelCase name: gamma rejects the `snake_case`
     /// `end_date` with `422 "order fields are not valid"`.
+    ///
+    /// # Errors
+    ///
+    /// If the request fails, the API returns a non-success status, or the body does not
+    /// deserialize into the expected shape.
     pub async fn execute(&self) -> Result<Vec<Event>> {
         let client = get_http_client(Some(GAMMA_API));
 

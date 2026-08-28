@@ -2,7 +2,7 @@
 //!
 //! This module provides authentication utilities for the Polymarket Builder API,
 //! which uses HMAC-SHA256 signatures similar to the CLOB API but with different
-//! header names (POLY_BUILDER_* instead of POLY_*).
+//! header names (`POLY_BUILDER`_* instead of POLY_*).
 //!
 //! It also provides Gnosis Safe EIP-712 transaction signing and
 //! CREATE2-based Safe address derivation.
@@ -20,16 +20,17 @@ use super::transactions::contracts;
 /// Builder API credentials for authenticating with the relayer.
 #[derive(Debug, Clone)]
 pub struct BuilderCredentials {
-    /// Builder API key (POLY_BUILDER_API_KEY).
+    /// Builder API key (`POLY_BUILDER_API_KEY`).
     pub api_key: String,
-    /// Builder API secret (POLY_BUILDER_API_SECRET).
+    /// Builder API secret (`POLY_BUILDER_API_SECRET`).
     pub api_secret: String,
-    /// Builder API passphrase (POLY_BUILDER_API_PASSPHRASE).
+    /// Builder API passphrase (`POLY_BUILDER_API_PASSPHRASE`).
     pub api_passphrase: String,
 }
 
 impl BuilderCredentials {
     /// Create new builder credentials.
+    #[must_use]
     pub fn new(api_key: String, api_secret: String, api_passphrase: String) -> Self {
         Self {
             api_key,
@@ -44,6 +45,10 @@ impl BuilderCredentials {
     /// - `POLY_BUILDER_API_KEY`
     /// - `POLY_BUILDER_API_SECRET`
     /// - `POLY_BUILDER_API_PASSPHRASE`
+    ///
+    /// # Errors
+    ///
+    /// If any of the `POLY_BUILDER_*` variables is unset or empty.
     pub fn from_env() -> Result<Self> {
         let config = get_config();
 
@@ -65,6 +70,11 @@ impl BuilderCredentials {
 /// - `POLY_BUILDER_PASSPHRASE`: The builder API passphrase
 /// - `POLY_BUILDER_TIMESTAMP`: Unix timestamp of the request
 /// - `POLY_BUILDER_SIGNATURE`: HMAC-SHA256 signature of the request
+///
+/// # Errors
+///
+/// If the HMAC signature cannot be built from the configured secret, or a credential
+/// contains bytes that are not valid in an HTTP header.
 pub fn build_builder_headers(
     creds: &BuilderCredentials,
     method: &str,
@@ -78,6 +88,11 @@ pub fn build_builder_headers(
 /// Build authentication headers with a specific timestamp.
 ///
 /// This is useful for testing or when you need to control the timestamp.
+///
+/// # Errors
+///
+/// If the HMAC signature cannot be built from the configured secret, or a credential
+/// contains bytes that are not valid in an HTTP header.
 pub fn build_builder_headers_with_timestamp(
     creds: &BuilderCredentials,
     method: &str,
@@ -135,6 +150,12 @@ pub fn build_builder_headers_with_timestamp(
 /// - Init code hash: `SAFE_INIT_CODE_HASH`
 ///
 /// CREATE2 formula: `keccak256(0xff ++ factory ++ salt ++ init_code_hash)[12..]`
+///
+/// # Panics
+///
+/// If the compiled-in `SAFE_FACTORY` constant is not a valid address — a build-time
+/// mistake in `contracts`, not a runtime condition.
+#[must_use]
 pub fn derive_safe_address(eoa: &Address) -> Address {
     let factory: Address = contracts::SAFE_FACTORY.parse().expect("valid SAFE_FACTORY address");
 
@@ -162,10 +183,14 @@ pub fn derive_safe_address(eoa: &Address) -> Address {
 /// 1. Compute EIP-712 struct hash for `SafeTx` type
 /// 2. Compute domain hash (no name/version, just chainId + verifyingContract)
 /// 3. Compute final EIP-712 hash
-/// 4. Sign with eth_sign (adds Ethereum prefix)
-/// 5. Adjust v-value for Gnosis Safe eth_sign mode (v += 4)
+/// 4. Sign with `eth_sign` (adds Ethereum prefix)
+/// 5. Adjust v-value for Gnosis Safe `eth_sign` mode (v += 4)
 ///
 /// Returns the packed signature as a hex string with 0x prefix.
+///
+/// # Errors
+///
+/// If the EIP-712 hash cannot be computed from the supplied fields, or signing fails.
 pub async fn sign_safe_transaction(
     signer: &PrivateKeySigner,
     safe_address: &Address,
@@ -268,6 +293,12 @@ pub async fn sign_safe_transaction(
 /// - Factory: `PROXY_FACTORY`
 /// - Salt: `keccak256(encodePacked(eoa_address))` (20 raw bytes, no padding)
 /// - Init code hash: `PROXY_INIT_CODE_HASH`
+///
+/// # Panics
+///
+/// If the compiled-in `PROXY_FACTORY` constant is not a valid address — a build-time
+/// mistake in `contracts`, not a runtime condition.
+#[must_use]
 pub fn derive_proxy_address(eoa: &Address) -> Address {
     let factory: Address = contracts::PROXY_FACTORY.parse().expect("valid PROXY_FACTORY address");
 
@@ -294,9 +325,13 @@ pub fn derive_proxy_address(eoa: &Address) -> Address {
 ///   relayHubAddress, relayAddress
 /// ]))`
 ///
-/// Then signed with eth_sign mode (`signMessage` adds Ethereum prefix).
+/// Then signed with `eth_sign` mode (`signMessage` adds Ethereum prefix).
 /// Returns the packed signature as hex with 0x prefix (r + s + v, no v adjustment).
 #[allow(clippy::too_many_arguments)]
+///
+/// # Errors
+///
+/// If the struct hash cannot be computed from the supplied fields, or signing fails.
 pub async fn sign_proxy_transaction(
     signer: &PrivateKeySigner,
     from: &Address,

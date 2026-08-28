@@ -3,7 +3,7 @@
 //! This example demonstrates fetching crypto prices for strike setting
 //! and settlement resolution of up/down events.
 //!
-//! Run with: cargo run --example fetch_crypto_price
+//! Run with: cargo run --example `fetch_crypto_price`
 
 use poly_clob_rs::api::crypto_price_requests::CryptoPriceRequest;
 

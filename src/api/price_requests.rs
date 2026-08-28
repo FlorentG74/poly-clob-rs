@@ -19,6 +19,7 @@ where
 }
 
 impl WebserviceRequest {
+    #[must_use]
     pub fn new_polymarket_price_request(token_ids: &[String]) -> Self {
         let args = Vec::<(String, String)>::new();
 

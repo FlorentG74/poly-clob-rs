@@ -83,7 +83,7 @@ struct OrderBookQueryItem {
 ///
 /// One of the following must be provided:
 /// * `token_ids` - List of token IDs to query (without side filter)
-/// * `token_ids_with_side` - List of (token_id, optional_side) tuples
+/// * `token_ids_with_side` - List of (`token_id`, `optional_side`) tuples
 ///
 /// # Limits
 ///
@@ -262,6 +262,11 @@ impl OrderBooksRequest {
 /// # Ok(())
 /// # }
 /// ```
+///
+/// # Errors
+///
+/// If the request fails, the API returns a non-success status, or the body does not
+/// deserialize into the expected shape.
 pub async fn fetch_order_books(token_ids: &[&str]) -> Result<OrderBooksResponse> {
     OrderBooksRequest::builder()
         .token_ids(token_ids.iter().map(|s| s.to_string()).collect::<Vec<String>>())
@@ -355,7 +360,7 @@ mod tests {
     ///
     /// This test:
     /// 1. Fetches the event series by slug
-    /// 2. Finds the current active event (first with end_date > now)
+    /// 2. Finds the current active event (first with `end_date` > now)
     /// 3. Fetches the full event data to get market token IDs
     /// 4. Queries order books for all token IDs
     #[tokio::test]

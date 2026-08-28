@@ -34,7 +34,7 @@ pub struct CryptoPriceResponse {
     pub close_price: Option<f64>,
     /// Server timestamp in milliseconds
     pub timestamp: i64,
-    /// Whether the event has completed and close_price is final
+    /// Whether the event has completed and `close_price` is final
     pub completed: bool,
     /// Whether the price data is incomplete/unavailable
     pub incomplete: bool,
@@ -42,11 +42,13 @@ pub struct CryptoPriceResponse {
 
 impl CryptoPriceResponse {
     /// Returns true if the price data is valid for settlement
+    #[must_use]
     pub fn is_valid_for_settlement(&self) -> bool {
         self.completed && !self.incomplete
     }
 
     /// Returns true if the open price is available for strike setting.
+    #[must_use]
     pub fn has_open_price(&self) -> bool {
         self.open_price.map(|p| p > 0.0).unwrap_or(false)
     }

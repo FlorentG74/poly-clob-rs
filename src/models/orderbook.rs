@@ -64,11 +64,11 @@ pub struct OrderBook {
     /// Whether this is a negative risk market
     #[serde(default)]
     pub neg_risk: Option<bool>,
-    /// Authoritative best bid from WS price_change message (server-reported, not level-derived).
+    /// Authoritative best bid from WS `price_change` message (server-reported, not level-derived).
     /// Set by the WS cache on every incremental update; None for REST/replay snapshots.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ws_best_bid: Option<f32>,
-    /// Authoritative best ask from WS price_change message (server-reported, not level-derived).
+    /// Authoritative best ask from WS `price_change` message (server-reported, not level-derived).
     /// Prevents stale ghost ask levels from being used as entry prices.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ws_best_ask: Option<f32>,
@@ -82,6 +82,7 @@ impl OrderBook {
     /// sort oppositely: the WS cache sorts bids descending (best first), while the
     /// REST `/books` endpoint returns bids ascending (best last). Relying on
     /// `.first()` would therefore return the worst bid for REST/replay books.
+    #[must_use]
     pub fn best_bid(&self) -> Option<&OrderBookLevel> {
         self.bids
             .iter()
@@ -99,6 +100,7 @@ impl OrderBook {
     /// source ordered the levels (WS sorts asks ascending = best first; REST
     /// returns asks descending = best last). Zero/negative-priced ghost levels
     /// are skipped so they can never be picked as the best ask.
+    #[must_use]
     pub fn best_ask(&self) -> Option<&OrderBookLevel> {
         self.asks
             .iter()
@@ -113,6 +115,7 @@ impl OrderBook {
     /// Returns the total bid depth (sum of all bid sizes).
     ///
     /// Sums each bid's size field. None values are treated as 0.
+    #[must_use]
     pub fn get_bid_depth(&self) -> f32 {
         self.bids.iter().filter_map(|level| level.size).sum()
     }
@@ -120,6 +123,7 @@ impl OrderBook {
     /// Returns the total ask depth (sum of all ask sizes).
     ///
     /// Sums each ask's size field. None values are treated as 0.
+    #[must_use]
     pub fn get_ask_depth(&self) -> f32 {
         self.asks.iter().filter_map(|level| level.size).sum()
     }
@@ -129,6 +133,7 @@ impl OrderBook {
     /// Prefers the server-authoritative value from WS `price_change` messages
     /// (`ws_best_bid`) when available. Falls back to the level-derived value
     /// for REST/replay snapshots that have no WS-authoritative data.
+    #[must_use]
     pub fn best_bid_price(&self) -> f64 {
         if let Some(v) = self.ws_best_bid {
             return v as f64;
@@ -146,6 +151,7 @@ impl OrderBook {
     /// from being used as entry prices.
     ///
     /// Falls back to the level-derived value for REST/replay snapshots.
+    #[must_use]
     pub fn best_ask_price(&self) -> f64 {
         if let Some(v) = self.ws_best_ask {
             return v as f64;
@@ -158,6 +164,7 @@ impl OrderBook {
     /// Returns the bid depth (sum of sizes) for prices >= the given price.
     /// This is useful for estimating how much liquidity is available
     /// to fill a sell order at or above a certain price.
+    #[must_use]
     pub fn bid_depth_to_price(&self, price: f64) -> f64 {
         let price_f32 = price as f32;
         self.bids
@@ -170,6 +177,7 @@ impl OrderBook {
     /// Returns the ask depth (sum of sizes) for prices <= the given price.
     /// This is useful for estimating how much liquidity is available
     /// to fill a buy order at or below a certain price.
+    #[must_use]
     pub fn ask_depth_to_price(&self, price: f64) -> f64 {
         let price_f32 = price as f32;
         self.asks
@@ -179,12 +187,14 @@ impl OrderBook {
             .sum::<f32>() as f64
     }
 
-    /// Returns bid depth as f64 (convenience wrapper around get_bid_depth)
+    /// Returns bid depth as f64 (convenience wrapper around `get_bid_depth`)
+    #[must_use]
     pub fn bid_depth(&self) -> f64 {
         self.get_bid_depth() as f64
     }
 
-    /// Returns ask depth as f64 (convenience wrapper around get_ask_depth)
+    /// Returns ask depth as f64 (convenience wrapper around `get_ask_depth`)
+    #[must_use]
     pub fn ask_depth(&self) -> f64 {
         self.get_ask_depth() as f64
     }

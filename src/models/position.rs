@@ -37,6 +37,7 @@ pub struct Position {
 }
 
 impl Position {
+    #[must_use]
     pub fn position_vec_to_map(positions: Vec<Self>, floor: f64) -> HashMap<String, Self> {
         let mut positions_map = HashMap::<String, Self>::new();
 

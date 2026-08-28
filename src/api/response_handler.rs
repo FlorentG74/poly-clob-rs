@@ -49,6 +49,12 @@ fn crypto_price_transport_alert(
 }
 
 /// Emit the crypto-price transport alert at most once per process per failure mode.
+///
+/// The `collapsible_match` suggestion here (fold each arm's `if` into a match guard) is
+/// BROKEN — applying it drops the `NonHttp2` arm and leaves a non-exhaustive match that
+/// does not compile (`cargo clippy --fix` rolls the whole crate back on it). It would also
+/// move a side-effecting atomic swap into a match guard, which is worse to read.
+#[allow(clippy::collapsible_match, reason = "the suggested fix does not compile; see above")]
 fn alert_crypto_price_transport(url: &str, version: Version, status: StatusCode) {
     match crypto_price_transport_alert(url, version == Version::HTTP_2, status == StatusCode::FORBIDDEN) {
         Some(CryptoPriceTransportAlert::Forbidden) => {
@@ -77,7 +83,9 @@ fn alert_crypto_price_transport(url: &str, version: Version, status: StatusCode)
 /// usable `Retry-After` header.
 pub const DEFAULT_RATE_LIMIT_DELAY_SECS: u64 = 5;
 
-/// Minimum retry delay enforced on any rate-limit (429) response. Polymarket returns
+/// Minimum retry delay enforced on any rate-limit (429) response.
+///
+/// Polymarket returns
 /// `Retry-After: 0` on its 429s, which would otherwise produce a zero-delay retry loop
 /// that hammers the endpoint (and, with no backoff, keeps the limiter tripped). Flooring
 /// here guarantees every 429 backs off by at least this much regardless of the header.
@@ -127,6 +135,11 @@ pub const MIN_RATE_LIMIT_DELAY_SECS: u64 = 1;
 /// # Ok(())
 /// # }
 /// ```
+///
+/// # Errors
+///
+/// If the status is a non-success one, or the body cannot be read. Rate-limit (429)
+/// responses surface as a retryable error carrying the floored delay.
 pub async fn handle_api_response(response: Response, url: &str) -> Result<String> {
     let status = response.status();
 
@@ -331,16 +344,16 @@ fn parse_retry_after(response: &Response) -> (Duration, Option<String>) {
 /// Parse a 400 Bad Request response and map it to the appropriate error type.
 ///
 /// Maps Polymarket-specific error messages to typed errors for better handling:
-/// - FOK/FAK order fill failures -> OrderNotFillable
-/// - Tick size violations -> InvalidTickSize
-/// - Minimum size violations -> InvalidOrderSize
-/// - Duplicate orders -> DuplicateOrder
-/// - Insufficient balance -> InsufficientBalance
-/// - Invalid expiration -> InvalidExpiration
-/// - Post-only errors -> InvalidPostOnlyType or PostOnlyCrossesBook
-/// - Market not ready -> MarketNotReady
-/// - Order delayed -> OrderDelayed
-/// - Everything else -> BadRequest
+/// - FOK/FAK order fill failures -> `OrderNotFillable`
+/// - Tick size violations -> `InvalidTickSize`
+/// - Minimum size violations -> `InvalidOrderSize`
+/// - Duplicate orders -> `DuplicateOrder`
+/// - Insufficient balance -> `InsufficientBalance`
+/// - Invalid expiration -> `InvalidExpiration`
+/// - Post-only errors -> `InvalidPostOnlyType` or `PostOnlyCrossesBook`
+/// - Market not ready -> `MarketNotReady`
+/// - Order delayed -> `OrderDelayed`
+/// - Everything else -> `BadRequest`
 fn parse_bad_request_error(raw_response: &str, url: &str) -> ApiError {
     let message_lower = raw_response.to_lowercase();
 

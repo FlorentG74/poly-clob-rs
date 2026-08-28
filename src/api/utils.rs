@@ -10,7 +10,11 @@ enum StringOrNumber {
 
 /// Deserialize either a string or a number as an Option<f32>.
 /// This supports both JSON API responses (where numbers are strings) and
-/// MessagePack serialization (where numbers are native types).
+/// `MessagePack` serialization (where numbers are native types).
+///
+/// # Errors
+///
+/// If the field is present but is neither null nor a string parseable as `f32`.
 pub fn deserialize_string_to_option_f32<'de, D>(deserializer: D) -> Result<Option<f32>, D::Error>
 where
     D: Deserializer<'de>,

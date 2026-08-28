@@ -41,5 +41,20 @@ http = "1"
 default = []
 with-diesel = ["diesel"]
 
+# Documentation lints. These live in `clippy::pedantic`, so they are off under a plain
+# `cargo clippy`; promoting them to `warn` is deliberate — the crate has been brought to
+# zero on all five, and warning by default is what keeps it there.
+#
+# Deliberately a self-contained table rather than `[lints] workspace = true`: this crate is
+# consumed as a git submodule of polytrader but is its own repository, so it must not depend
+# on a parent workspace for its lint config. The parent carries an identical table in its
+# `[workspace.lints.clippy]` — keep the two in sync.
+[lints.clippy]
+doc_markdown = "warn"                 # identifiers in prose must be in backticks
+must_use_candidate = "warn"           # pure fns returning a value get #[must_use]
+missing_errors_doc = "warn"           # public fallible fns document their `# Errors`
+missing_panics_doc = "warn"           # public fns that can panic document their `# Panics`
+too_long_first_doc_paragraph = "warn" # doc comments open with a one-line summary
+
 # [package.metadata.cargo-machete]
 # ignored = ["strum"]

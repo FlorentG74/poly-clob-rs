@@ -70,6 +70,7 @@ pub enum SortDirection {
 
 impl SortDirection {
     /// Returns the string representation for API requests.
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             SortDirection::ASC => "ASC",

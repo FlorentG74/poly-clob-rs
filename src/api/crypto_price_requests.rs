@@ -57,6 +57,7 @@ pub struct CryptoPriceRequest<'a> {
 
 impl<'a> CryptoPriceRequest<'a> {
     /// Duration in seconds for each variant, used to compute `endDate`.
+    #[must_use]
     pub fn variant_duration_secs(variant: &str) -> i64 {
         match variant {
             "fiveminute" => 5 * 60,
@@ -69,6 +70,11 @@ impl<'a> CryptoPriceRequest<'a> {
     }
 
     /// Build the query parameters for the request (extracted for testability).
+    ///
+    /// # Errors
+    ///
+    /// If the configured request parameters are inconsistent — e.g. a required field is
+    /// unset, or a timestamp will not format.
     pub fn build_params(&self) -> Result<Vec<(String, String)>> {
         use chrono::{TimeZone, Utc};
 
@@ -96,6 +102,11 @@ impl<'a> CryptoPriceRequest<'a> {
     }
 
     /// Execute the request and return the crypto price response.
+    ///
+    /// # Errors
+    ///
+    /// If the request fails, the API returns a non-success status, or the body does not
+    /// deserialize into the expected shape.
     pub async fn execute(&self) -> Result<CryptoPriceResponse> {
         let client = get_http_client(Some(POLYMARKET_API));
 
@@ -204,7 +215,7 @@ mod tests {
     /// fix is the reqwest `http2` feature; this test fails loudly if it regresses.
     ///
     /// Network-dependent, so excluded from the default run. Execute with:
-    ///   cargo test -p poly-clob-rs crypto_price_live_smoke -- --ignored --nocapture
+    ///   cargo test -p poly-clob-rs `crypto_price_live_smoke` -- --ignored --nocapture
     #[tokio::test]
     #[ignore = "live network smoke test; run manually with --ignored"]
     async fn crypto_price_live_smoke_negotiates_http2() {

@@ -22,6 +22,11 @@ use super::clob_endpoints::{CLOB_API, GET_API_KEYS, GET_BALANCE_ALLOWANCE};
 /// # Returns
 ///
 /// Returns `Ok(String)` with the API response on success, or an error on failure.
+///
+/// # Errors
+///
+/// If the request fails, the API returns a non-success status, or the body does not
+/// deserialize into the expected shape.
 pub async fn get_balance_allowance(
     signer: &Account,
     asset_type: AssetType,
@@ -48,6 +53,11 @@ pub async fn get_balance_allowance(
 /// # Returns
 ///
 /// Returns `Ok(String)` with the API response on success, or an error on failure.
+///
+/// # Errors
+///
+/// If signing the L1 header fails, or the API rejects the request / returns an
+/// unparseable body.
 pub async fn get_api_key(signer: &Account, signature_type: i32) -> Result<String> {
     let request_path = GET_API_KEYS;
     let mut callable_url = format!("{}{}", CLOB_API, request_path);

@@ -20,6 +20,7 @@ const DUST_SCAN_SIZE_THRESHOLD: &str = "0";
 
 impl WebserviceRequest {
     /// Positions request with the standard floor — drops sub-0.1-share residue.
+    #[must_use]
     pub fn new_positions_ws_request(user: &str) -> Self {
         Self::positions_request(user, DEFAULT_POSITION_SIZE_THRESHOLD)
     }
@@ -28,6 +29,7 @@ impl WebserviceRequest {
     ///
     /// That pass exists to find what the normal path misses, so inheriting the normal
     /// path's floor would make it skip exactly the residue it is meant to discover.
+    #[must_use]
     pub fn new_positions_ws_request_all_sizes(user: &str) -> Self {
         Self::positions_request(user, DUST_SCAN_SIZE_THRESHOLD)
     }
@@ -78,7 +80,7 @@ mod tests {
     /// Prints the raw JSON from the positions API so we can inspect the exact field names
     /// and whether `avgPrice` is present and populated in the live response.
     ///
-    /// Run with: cargo test -p poly-clob-rs test_positions_raw_response -- --nocapture
+    /// Run with: cargo test -p poly-clob-rs `test_positions_raw_response` -- --nocapture
     #[tokio::test]
     async fn test_positions_raw_response() {
         crate::config::init_from_env();

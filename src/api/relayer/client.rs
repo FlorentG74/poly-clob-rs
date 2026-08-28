@@ -40,14 +40,15 @@ pub const DEFAULT_MAX_POLL_ATTEMPTS: u32 = 30;
 /// Gas limit for a proxy (GSN) submission wrapping `n` batched sub-calls.
 ///
 /// The gas limit must cover EVERY batched sub-call: an under-budgeted relayed call
-/// fails silently (RelayHub reports RelayedCallFailed while the outer tx still mines).
+/// fails silently (`RelayHub` reports `RelayedCallFailed` while the outer tx still mines).
 ///
 /// The per-call budget is measured, not assumed. `eth_estimateGas` on single
-/// `redeemPositions` calls against REDEEM_ROUTER ranges from ~265k to ~472k depending
+/// `redeemPositions` calls against `REDEEM_ROUTER` ranges from ~265k to ~472k depending
 /// on how many storage slots the payout touches, so a batch of 2 can need ~740k. The
 /// previous 220k/call figure came from the Polymarket UI's legacy-CTF path and left a
 /// 2-redeem batch (640k) short of its ~737k requirement. We budget 500k per sub-call
 /// plus a 200k base. An empty batch is treated as one call so it still gets a budget.
+#[must_use]
 pub fn proxy_gas_limit(num_transactions: usize) -> u64 {
     let n = (num_transactions.max(1)) as u64;
     (500_000 * n + 200_000).max(500_000)
@@ -140,11 +141,21 @@ impl RelayerClient {
     /// Get the current nonce for the signer address.
     ///
     /// The nonce is used to order transactions and prevent replay attacks.
+    ///
+    /// # Errors
+    ///
+    /// If the request fails, the API returns a non-success status, or the body does not
+    /// deserialize into the expected shape.
     pub async fn get_nonce(&self) -> Result<u64> {
         self.get_nonce_for_address(&self.signer_address).await
     }
 
     /// Get the current nonce for a specific address.
+    ///
+    /// # Errors
+    ///
+    /// If the request fails, the API returns a non-success status, or the body does not
+    /// deserialize into the expected shape.
     pub async fn get_nonce_for_address(&self, address: &str) -> Result<u64> {
         let tx_type_str = match self.tx_type {
             RelayerTxType::Safe => "SAFE",
@@ -196,6 +207,11 @@ impl RelayerClient {
     }
 
     /// Check if the Safe/Proxy wallet is deployed.
+    ///
+    /// # Errors
+    ///
+    /// If the request fails, the API returns a non-success status, or the body does not
+    /// deserialize into the expected shape.
     pub async fn get_deployed(&self, address: &str) -> Result<bool> {
         let url = format!("{}{}?address={}", self.base_url, GET_DEPLOYED, address);
 
@@ -238,6 +254,11 @@ impl RelayerClient {
     }
 
     /// Get a specific transaction by ID.
+    ///
+    /// # Errors
+    ///
+    /// If the request fails, the API returns a non-success status, or the body does not
+    /// deserialize into the expected shape.
     pub async fn get_transaction(&self, transaction_id: &str) -> Result<RelayerTransaction> {
         let url = format!(
             "{}{}?id={}",
@@ -293,6 +314,11 @@ impl RelayerClient {
     }
 
     /// Get all transactions for the authenticated builder.
+    ///
+    /// # Errors
+    ///
+    /// If the request fails, the API returns a non-success status, or the body does not
+    /// deserialize into the expected shape.
     pub async fn get_transactions(&self) -> Result<Vec<RelayerTransaction>> {
         let url = format!("{}{}", self.base_url, GET_TRANSACTIONS);
 
@@ -336,6 +362,11 @@ impl RelayerClient {
     /// Get relay payload for proxy transactions.
     ///
     /// Returns the relay address and nonce needed for proxy transaction signing.
+    ///
+    /// # Errors
+    ///
+    /// If the request fails, the API returns a non-success status, or the body does not
+    /// deserialize into the expected shape.
     pub async fn get_relay_payload(&self, address: &str) -> Result<RelayPayloadResponse> {
         let tx_type_str = match self.tx_type {
             RelayerTxType::Safe => "SAFE",
@@ -388,6 +419,10 @@ impl RelayerClient {
     /// Submit transactions to the relayer.
     ///
     /// Routes to Safe or Proxy submission based on `tx_type`.
+    ///
+    /// # Errors
+    ///
+    /// If the builder headers cannot be built, or the relayer rejects the submission.
     pub async fn submit(&self, transactions: Vec<Transaction>) -> Result<RelayerTransactionResponse> {
         match self.tx_type {
             RelayerTxType::Safe => {
@@ -406,9 +441,13 @@ impl RelayerClient {
     /// Implements the official Polymarket relayer format matching the TypeScript
     /// `builder-relayer-client`:
     /// 1. Get nonce from relayer
-    /// 2. Determine Safe address (from wallet_address config, or derive via CREATE2)
-    /// 3. Sign with EIP-712 SafeTx schema
+    /// 2. Determine Safe address (from `wallet_address` config, or derive via CREATE2)
+    /// 3. Sign with EIP-712 `SafeTx` schema
     /// 4. Submit with proper request format including signatureParams
+    ///
+    /// # Errors
+    ///
+    /// If signing the Safe transaction fails, or the relayer rejects the submission.
     pub async fn submit_safe(
         &self,
         transactions: Vec<SafeTransaction>,
@@ -545,9 +584,13 @@ impl RelayerClient {
     ///
     /// The PROXY flow:
     /// 1. Fetch relay address + nonce from `/relay-payload?address=&type=PROXY`
-    /// 2. Wrap inner transactions with `proxy(...)` call targeting ProxyWalletFactory
+    /// 2. Wrap inner transactions with `proxy(...)` call targeting `ProxyWalletFactory`
     /// 3. Sign using GSN "rlx:" scheme (EIP-191 personal sign over struct hash)
     /// 4. Submit with GSN-style signatureParams: gasLimit, relayerFee, relayHub, relay
+    ///
+    /// # Errors
+    ///
+    /// If signing the Proxy transaction fails, or the relayer rejects the submission.
     pub async fn submit_proxy(
         &self,
         transactions: Vec<Transaction>,
@@ -750,6 +793,11 @@ impl RelayerClient {
     /// # Returns
     ///
     /// The final transaction state, or an error if polling times out.
+    ///
+    /// # Errors
+    ///
+    /// If polling times out before the transaction reaches the requested state, or a poll
+    /// request fails.
     pub async fn poll_until_state(
         &self,
         transaction_id: &str,
@@ -765,6 +813,11 @@ impl RelayerClient {
     }
 
     /// Poll until a transaction reaches the target state with custom configuration.
+    ///
+    /// # Errors
+    ///
+    /// If polling times out before the transaction reaches the requested state, or a poll
+    /// request fails.
     pub async fn poll_until_state_with_config(
         &self,
         transaction_id: &str,

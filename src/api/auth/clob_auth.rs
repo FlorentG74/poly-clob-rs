@@ -100,6 +100,10 @@ fn get_encoded_domain(eip712_struct: &dyn EIP712Struct) -> Result<B256> {
     Ok(keccak256(encoded_domain_full_bytes))
 }
 
+///
+/// # Errors
+///
+/// If the account has no usable signing key, or signing fails.
 pub fn build_l1_signature(
     eip712_struct: &dyn EIP712Struct,
     salt: &str,
@@ -144,6 +148,10 @@ pub fn build_l1_signature(
     Ok(result)
 }
 
+///
+/// # Errors
+///
+/// If the account is missing API credentials, or the HMAC signature cannot be built.
 pub fn build_l2_headers(
     signer: &Account,
     method: &str,
@@ -208,6 +216,10 @@ pub fn build_l2_headers(
     Ok(headers)
 }
 
+///
+/// # Errors
+///
+/// If the secret is not valid base64, or the HMAC cannot be keyed with it.
 pub fn build_hmac_signature(
     api_secret: &str,
     timestamp: &str,
@@ -240,6 +252,7 @@ pub fn build_hmac_signature(
     Ok(signature)
 }
 
+#[must_use]
 pub fn get_timestamp() -> String {
     let now = Utc::now();
     now.timestamp().to_string()

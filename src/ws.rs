@@ -64,6 +64,7 @@ pub fn ws_polymarket_client() -> &'static Client {
 ///
 /// Polymarket feeds get the split tunnel and DNS override; everything else (Binance)
 /// keeps default routing and the system resolver, paying no VPN latency.
+#[must_use]
 pub fn ws_client_for(url: &str) -> &'static Client {
     if is_polymarket_url(url) {
         ws_polymarket_client()
@@ -73,6 +74,10 @@ pub fn ws_client_for(url: &str) -> &'static Client {
 }
 
 /// Open a WebSocket connection to `url`, applying Polymarket policy where it applies.
+///
+/// # Errors
+///
+/// If the URL is not a valid websocket endpoint, or the upgrade handshake fails.
 pub async fn connect(url: &str) -> Result<WebSocket, reqwest_websocket::Error> {
     let response = ws_client_for(url).get(url).upgrade().send().await?;
     response.into_websocket().await

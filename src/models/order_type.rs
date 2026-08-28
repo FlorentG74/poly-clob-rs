@@ -49,6 +49,7 @@ pub enum OrderType {
 
 impl OrderType {
     /// Returns the string representation of the order type as expected by the Polymarket API.
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             OrderType::FOK => "FOK",

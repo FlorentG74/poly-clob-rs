@@ -25,6 +25,10 @@ pub trait KeysetApiResponse {
 ///
 /// Apply with `#[serde(default, deserialize_with = "deserialize_cursor")]` on
 /// keyset `next_cursor` fields so callers never observe an empty-string cursor.
+///
+/// # Errors
+///
+/// If the cursor field is present but is neither null nor a string.
 pub fn deserialize_cursor<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
     D: serde::Deserializer<'de>,

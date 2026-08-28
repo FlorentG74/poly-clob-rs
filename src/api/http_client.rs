@@ -63,6 +63,7 @@ fn host_of(url: &str) -> &str {
 /// Matches `polymarket.com` and any subdomain of it, which covers every endpoint the
 /// bot talks to: `clob`, `gamma-api`, `data-api`, `ws-subscriptions-clob`,
 /// `ws-live-data`, `relayer-v2` and `bridge`.
+#[must_use]
 pub fn is_polymarket_url(url: &str) -> bool {
     let host = host_of(url).to_ascii_lowercase();
     host == "polymarket.com" || host.ends_with(".polymarket.com")
@@ -136,6 +137,7 @@ pub fn apply_split_tunnel(builder: ClientBuilder) -> ClientBuilder {
 /// # Ok(())
 /// # }
 /// ```
+#[must_use]
 pub fn get_http_client(endpoint: Option<&str>) -> &'static Client {
     match endpoint {
         Some(url) if is_polymarket_url(url) => get_split_tunnel_http_client(),

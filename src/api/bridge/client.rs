@@ -85,6 +85,11 @@ impl BridgeClient {
     /// # Arguments
     ///
     /// * `address` - The Polymarket wallet address to credit deposits to.
+    ///
+    /// # Errors
+    ///
+    /// If the request fails, the API returns a non-success status, or the body does not
+    /// deserialize into the expected shape.
     pub async fn create_deposit_addresses(&self, address: &str) -> Result<DepositResponse> {
         let req = DepositRequest {
             address: address.to_string(),
@@ -96,6 +101,11 @@ impl BridgeClient {
     ///
     /// `POST /withdraw`. Returns the bridge addresses to send pUSD to in order to
     /// withdraw to the requested destination.
+    ///
+    /// # Errors
+    ///
+    /// If the request fails, the API returns a non-success status, or the body does not
+    /// deserialize into the expected shape.
     pub async fn create_withdrawal_addresses(
         &self,
         request: &WithdrawalRequest,
@@ -106,6 +116,11 @@ impl BridgeClient {
     /// Get the list of supported assets and their minimum deposit/withdrawal amounts.
     ///
     /// `GET /supported-assets`.
+    ///
+    /// # Errors
+    ///
+    /// If the request fails, the API returns a non-success status, or the body does not
+    /// deserialize into the expected shape.
     pub async fn get_supported_assets(&self) -> Result<Vec<SupportedAsset>> {
         let url = format!("{}{}", self.base_url, GET_SUPPORTED_ASSETS);
         let response: SupportedAssetsResponse = self.get(&url).await?;
@@ -115,6 +130,11 @@ impl BridgeClient {
     /// Get a swap/bridge quote for a prospective transfer.
     ///
     /// `POST /quote`.
+    ///
+    /// # Errors
+    ///
+    /// If the request fails, the API returns a non-success status, or the body does not
+    /// deserialize into the expected shape.
     pub async fn get_quote(&self, request: &QuoteRequest) -> Result<QuoteResponse> {
         self.post(GET_QUOTE, request).await
     }
@@ -124,6 +144,11 @@ impl BridgeClient {
     /// `GET /status/{address}`. The `address` is one of the per-network addresses
     /// returned by [`create_deposit_addresses`](Self::create_deposit_addresses) or
     /// [`create_withdrawal_addresses`](Self::create_withdrawal_addresses).
+    ///
+    /// # Errors
+    ///
+    /// If the request fails, the API returns a non-success status, or the body does not
+    /// deserialize into the expected shape.
     pub async fn get_transaction_status(&self, address: &str) -> Result<Vec<BridgeTransaction>> {
         let url = format!("{}{}/{}", self.base_url, GET_TRANSACTION_STATUS, address);
         let response: TransactionStatusResponse = self.get(&url).await?;

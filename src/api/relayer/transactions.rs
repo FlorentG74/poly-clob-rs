@@ -10,18 +10,20 @@ use alloy::primitives::{Address, Bytes, B256, U256};
 /// Polygon mainnet contract addresses for Polymarket.
 pub mod contracts {
     /// CTF (Conditional Token Framework) contract address on Polygon.
+    ///
     /// LEGACY redeem path: redeeming here with USDC.e collateral pays out raw
     /// USDC.e, which is NOT Polymarket's current spendable collateral and must be
-    /// manually wrapped/deposited in the UI. Use REDEEM_ROUTER + PUSD_COLLATERAL.
+    /// manually wrapped/deposited in the UI. Use `REDEEM_ROUTER` + `PUSD_COLLATERAL`.
     pub const CTF_CONTRACT: &str = "0x4d97dcd97ec945f40cf65f87097ace5ea0476045";
 
-    /// USDC.e (bridged USDC) — the LEGACY collateral. See PUSD_COLLATERAL.
+    /// USDC.e (bridged USDC) — the LEGACY collateral. See `PUSD_COLLATERAL`.
     pub const PUSD_CONTRACT: &str = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174";
 
     /// Polymarket redeem router that settles proceeds directly as spendable pUSD.
+    ///
     /// Confirmed on-chain from a working UI redeem (selector + ABI identical to the
     /// legacy CTF path; only the target contract and collateral differ). Redeeming
-    /// here with PUSD_COLLATERAL credits the proxy wallet with usable pUSD — no
+    /// here with `PUSD_COLLATERAL` credits the proxy wallet with usable pUSD — no
     /// manual UI deposit needed.
     pub const REDEEM_ROUTER: &str = "0xada100Db00CA00073811820692005400218fce1F";
 
@@ -40,7 +42,7 @@ pub mod contracts {
     /// Gnosis Safe Proxy Factory address on Polygon (used for CREATE2 derivation).
     pub const SAFE_FACTORY: &str = "0xaacFeEa03eb1561C4e67d661e40682Bd20E3541b";
 
-    /// Gnosis Safe MultiSend contract address on Polygon.
+    /// Gnosis Safe `MultiSend` contract address on Polygon.
     pub const SAFE_MULTISEND: &str = "0xA238CBeb142c10Ef7Ad8442C6D1f9E89e07e7761";
 
     /// Polymarket Proxy Wallet Factory address on Polygon mainnet.
@@ -117,6 +119,11 @@ pub struct RedeemParams {
 /// println!("Target: {}", tx.to);
 /// println!("Data: {}", tx.data);
 /// ```
+///
+/// # Errors
+///
+/// If `params` carries an address or condition id that is not valid hex, or the call
+/// data cannot be ABI-encoded.
 pub fn create_redeem_tx(params: &RedeemParams) -> Result<Transaction> {
     // Parse the condition ID
     let condition_id: B256 = params
@@ -193,7 +200,7 @@ pub fn create_redeem_tx(params: &RedeemParams) -> Result<Transaction> {
     })
 }
 
-/// Encode transactions as a call to the ProxyWalletFactory's `proxy` function.
+/// Encode transactions as a call to the `ProxyWalletFactory`'s `proxy` function.
 ///
 /// The proxy function signature is:
 /// `proxy((uint8 typeCode, address to, uint256 value, bytes data)[])`

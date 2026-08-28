@@ -15,7 +15,7 @@ use std::str::FromStr;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum SignatureType {
-    /// Standard Ethereum wallet (MetaMask, hardware wallet, etc.).
+    /// Standard Ethereum wallet (`MetaMask`, hardware wallet, etc.).
     /// The funder is the EOA address and will need POL to pay gas on transactions.
     Eoa = 0,
 
@@ -33,6 +33,7 @@ pub enum SignatureType {
 
 impl SignatureType {
     /// Returns the numeric value of the signature type.
+    #[must_use]
     pub fn as_u8(&self) -> u8 {
         *self as u8
     }
@@ -178,7 +179,7 @@ pub struct Transaction {
 pub struct SafeTransaction {
     /// Target contract address.
     pub to: Address,
-    /// Operation type (Call or DelegateCall).
+    /// Operation type (Call or `DelegateCall`).
     pub operation: OperationType,
     /// Encoded function call data.
     pub data: Bytes,
@@ -201,7 +202,7 @@ impl From<Transaction> for SafeTransaction {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProxyTransaction {
-    /// Call type (Call or DelegateCall).
+    /// Call type (Call or `DelegateCall`).
     pub type_code: CallType,
     /// Target contract address.
     pub to: Address,
@@ -252,7 +253,7 @@ pub struct TransactionSubmitRequest {
     pub data: Bytes,
     /// Transaction nonce.
     pub nonce: u64,
-    /// EIP-712 signature (optional - not needed for POLY_PROXY with Builder API auth).
+    /// EIP-712 signature (optional - not needed for `POLY_PROXY` with Builder API auth).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signature: Option<String>,
     /// Transaction type.
@@ -271,7 +272,7 @@ pub struct TransactionSubmitRequest {
 pub struct SignatureParamsRequest {
     /// Gas price in wei.
     pub gas_price: String,
-    /// Operation type ("0" = Call, "1" = DelegateCall).
+    /// Operation type ("0" = Call, "1" = `DelegateCall`).
     pub operation: String,
     /// Safe transaction gas.
     pub safe_txn_gas: String,

@@ -68,6 +68,7 @@ impl Side {
     /// assert_eq!(Side::Buy.to_int(), 0);
     /// assert_eq!(Side::Sell.to_int(), 1);
     /// ```
+    #[must_use]
     pub fn to_int(self) -> i32 {
         match self {
             Side::Buy => 0,
@@ -85,6 +86,7 @@ impl Side {
     /// assert_eq!(Side::Buy.to_lowercase_str(), "buy");
     /// assert_eq!(Side::Sell.to_lowercase_str(), "sell");
     /// ```
+    #[must_use]
     pub fn to_lowercase_str(self) -> &'static str {
         match self {
             Side::Buy => "buy",

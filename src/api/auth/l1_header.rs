@@ -22,6 +22,7 @@ pub struct L1Header {
 }
 
 impl L1Header {
+    #[must_use]
     pub fn new(signer: &str) -> Self {
         L1Header {
             signer: signer.to_string(),

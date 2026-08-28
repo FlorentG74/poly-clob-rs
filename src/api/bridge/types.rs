@@ -1,7 +1,7 @@
 //! Bridge API request and response types.
 //!
 //! These types mirror the Polymarket Bridge API schemas (see the bridge
-//! OpenAPI spec). All wire structs use `#[serde(rename_all = "camelCase")]`
+//! `OpenAPI` spec). All wire structs use `#[serde(rename_all = "camelCase")]`
 //! to match the JSON field naming used by the API.
 
 use serde::{Deserialize, Serialize};
