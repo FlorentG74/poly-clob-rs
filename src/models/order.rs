@@ -43,10 +43,10 @@ struct SignedOrderRequest<'a> {
     signer: &'a str,
     #[serde(rename = "tokenId")]
     token_id: &'a str,
-    #[serde(serialize_with = "serialize_i32_as_string")]
-    maker_amount: i32,
-    #[serde(serialize_with = "serialize_i32_as_string")]
-    taker_amount: i32,
+    #[serde(serialize_with = "serialize_u64_as_string")]
+    maker_amount: u64,
+    #[serde(serialize_with = "serialize_u64_as_string")]
+    taker_amount: u64,
     side: String,
     signature_type: i32,
     #[serde(serialize_with = "serialize_u64_as_string")]
@@ -69,13 +69,6 @@ where
         .serialize(serializer)
 }
 
-fn serialize_i32_as_string<S>(value: &i32, serializer: S) -> std::result::Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    serializer.serialize_str(&value.to_string())
-}
-
 fn serialize_i64_as_string<S>(value: &i64, serializer: S) -> std::result::Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
@@ -96,8 +89,14 @@ pub struct Order {
     pub maker: String,
     pub signer: String,
     pub token_id: String,
-    pub maker_amount: i32,
-    pub taker_amount: i32,
+    /// Amount the maker gives, in raw units (scaled by [`RAW_UNIT_MULTIPLIER`]).
+    ///
+    /// `u64` to mirror the on-chain `uint256`: the CLOB accepts these as decimal strings and
+    /// signs them as `uint256`, so nothing in the protocol bounds them. They were `i32`,
+    /// which silently capped an order at `i32::MAX / 1e6` ≈ 2147 shares or ≈$2147 notional.
+    pub maker_amount: u64,
+    /// Amount the taker gives, in raw units. See [`Order::maker_amount`].
+    pub taker_amount: u64,
     #[builder(default = 0)]
     pub expiration: i64,
     pub side: Side,
@@ -166,8 +165,8 @@ impl Order {
     pub fn validate_order(&self) -> Result<()> {
         //for buy orders, token quantity should be >= MIN_POLY_TOKEN_QUANTITY and USD amount should be >= 1.0
         if self.side == Side::Buy
-            && (self.maker_amount <= (RAW_UNIT_MULTIPLIER as i32)
-                || self.taker_amount < (MIN_POLY_TOKEN_QUANTITY as i32) * (RAW_UNIT_MULTIPLIER as i32))
+            && (self.maker_amount <= RAW_UNIT_MULTIPLIER
+                || self.taker_amount < MIN_POLY_TOKEN_QUANTITY * RAW_UNIT_MULTIPLIER)
         {
             return Err(ValidationError::InvalidAmount {
                 reason: format!(
@@ -224,8 +223,8 @@ impl EIP712Struct for Order {
     ///     .maker("0x1234567890123456789012345678901234567890")
     ///     .signer("0x1234567890123456789012345678901234567890")
     ///     .token_id("12345")
-    ///     .maker_amount(100)
-    ///     .taker_amount(50)
+    ///     .maker_amount(100u64)
+    ///     .taker_amount(50u64)
     ///     .side(Side::Buy)
     ///     .order_type(OrderType::GTC)
     ///     .timestamp(1712700000000u64)
@@ -292,8 +291,8 @@ mod tests {
                 .maker(TEST_MAKER)
                 .signer(TEST_MAKER)
                 .token_id(TEST_TOKEN_ID)
-                .maker_amount(100)
-                .taker_amount(50)
+                .maker_amount(100u64)
+                .taker_amount(50u64)
                 .side($side)
                 .order_type($order_type)
                 .timestamp(TEST_TIMESTAMP)
@@ -307,8 +306,8 @@ mod tests {
             .maker(TEST_MAKER)
             .signer(TEST_MAKER)
             .token_id(TEST_TOKEN_ID)
-            .maker_amount(100)
-            .taker_amount(50)
+            .maker_amount(100u64)
+            .taker_amount(50u64)
             .expiration(9999999999_i64)
             .side(Side::Buy)
             .order_type(OrderType::FOK)
@@ -376,8 +375,8 @@ mod tests {
             .maker(TEST_MAKER)
             .signer(TEST_MAKER)
             .token_id(TEST_TOKEN_ID)
-            .maker_amount(100)
-            .taker_amount(50)
+            .maker_amount(100u64)
+            .taker_amount(50u64)
             .expiration(9999999999_i64)
             .side(Side::Buy)
             .order_type(OrderType::FOK)
@@ -480,8 +479,8 @@ mod tests {
             .maker(TEST_MAKER)
             .signer(TEST_MAKER)
             .token_id(TEST_TOKEN_ID)
-            .maker_amount(100)
-            .taker_amount(50)
+            .maker_amount(100u64)
+            .taker_amount(50u64)
             .side(Side::Buy)
             .order_type(OrderType::GTC)
             .neg_risk(true)

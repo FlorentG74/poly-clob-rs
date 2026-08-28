@@ -17,6 +17,21 @@ use super::clob_endpoints::{CLOB_API, CANCEL, GET_ORDER, POST_ORDER};
 
 use crate::constants::raw_multiplier_decimal;
 
+/// Convert a raw (multiplier-scaled) order amount to the `u64` the CLOB order struct holds.
+///
+/// Fails only on a negative or non-representable amount, which would be a bug in the caller
+/// rather than a legitimate order — an error beats the `.expect("maker_amount overflow")`
+/// this replaces, which panicked on the order-placement path of a live bot holding a
+/// position.
+fn raw_amount_u64(raw: Decimal, field: &str) -> Result<u64> {
+    raw.to_u64().ok_or_else(|| {
+        ValidationError::InvalidAmount {
+            reason: format!("{field} {raw} is not a valid raw order amount"),
+        }
+        .into()
+    })
+}
+
 /// Parameters for placing a limit order on the Polymarket CLOB.
 ///
 /// # Required Fields
@@ -134,11 +149,7 @@ impl<'a> LimitOrderRequest<'a> {
     /// * Expiration is non-zero for FOK/FAK/GTC orders
     /// * Expiration is zero for GTD orders
     /// * Order size validation fails (BUY orders: USD amount must be > $1.0 AND token quantity must be >= 5)
-    ///
-    /// # Panics
-    ///
-    /// If the scaled maker/taker amount overflows `i32`. The size validation above bounds
-    /// the order well below that, so this is unreachable for any order that gets this far.
+    /// * A scaled maker/taker amount is negative or otherwise not representable
     pub async fn build(&self) -> Result<Order> {
         // Validate expiration based on order type
         match self.order_type {
@@ -170,21 +181,15 @@ impl<'a> LimitOrderRequest<'a> {
 
         let (maker_amount, taker_amount) = if self.side == Side::Buy {
             // BUY: giving USDC (maker), receiving tokens (taker)
-            let maker_amount = ((rounded_size * self.price).round_dp(4) * raw_multiplier)
-                .to_i32()
-                .expect("maker_amount overflow");
-            let taker_amount = (rounded_size * raw_multiplier)
-                .to_i32()
-                .expect("taker_amount overflow");
+            let maker_amount =
+                raw_amount_u64((rounded_size * self.price).round_dp(4) * raw_multiplier, "maker_amount")?;
+            let taker_amount = raw_amount_u64(rounded_size * raw_multiplier, "taker_amount")?;
             (maker_amount, taker_amount)
         } else {
             // SELL: giving tokens (maker), receiving USDC (taker)
-            let maker_amount = (rounded_size * raw_multiplier)
-                .to_i32()
-                .expect("maker_amount overflow");
-            let taker_amount = ((rounded_size * self.price).round_dp(4) * raw_multiplier)
-                .to_i32()
-                .expect("taker_amount overflow");
+            let maker_amount = raw_amount_u64(rounded_size * raw_multiplier, "maker_amount")?;
+            let taker_amount =
+                raw_amount_u64((rounded_size * self.price).round_dp(4) * raw_multiplier, "taker_amount")?;
             (maker_amount, taker_amount)
         };
 
@@ -711,12 +716,12 @@ mod tests {
         let price = Decimal::from_f64(0.45_f64).unwrap();
 
         let raw_multiplier = raw_multiplier_decimal();
-        let expected_maker_amount = 3_969_000i32; // 8.82 * 0.45 * 1_000_000 = 3_969_000
+        let expected_maker_amount = 3_969_000u64; // 8.82 * 0.45 * 1_000_000 = 3_969_000
 
         let calculated_maker = (size * price * raw_multiplier)
             .round()
-            .to_i32()
-            .expect("overflow");
+            .to_u64()
+            .expect("test fixture fits u64");
 
         assert_eq!(calculated_maker, expected_maker_amount,
             "BUY order maker_amount calculation failed: expected {}, got {}",
@@ -729,12 +734,12 @@ mod tests {
         let size = Decimal::from_f64(8.82_f64).unwrap();
 
         let raw_multiplier = raw_multiplier_decimal();
-        let expected_taker_amount = 8_820_000i32; // 8.82 * 1_000_000 = 8_820_000
+        let expected_taker_amount = 8_820_000u64; // 8.82 * 1_000_000 = 8_820_000
 
         let calculated_taker = (size * raw_multiplier)
             .round()
-            .to_i32()
-            .expect("overflow");
+            .to_u64()
+            .expect("test fixture fits u64");
 
         assert_eq!(calculated_taker, expected_taker_amount,
             "BUY order taker_amount calculation failed: expected {}, got {}",
@@ -748,17 +753,17 @@ mod tests {
         let price = Decimal::from_f64(0.45_f64).unwrap();
 
         let raw_multiplier = raw_multiplier_decimal();
-        let expected_maker_amount = 8_820_000i32; // tokens: 8.82 * 1_000_000
-        let expected_taker_amount = 3_969_000i32; // USDC: 8.82 * 0.45 * 1_000_000
+        let expected_maker_amount = 8_820_000u64; // tokens: 8.82 * 1_000_000
+        let expected_taker_amount = 3_969_000u64; // USDC: 8.82 * 0.45 * 1_000_000
 
         let calculated_maker = (size * raw_multiplier)
             .round()
-            .to_i32()
-            .expect("overflow");
+            .to_u64()
+            .expect("test fixture fits u64");
         let calculated_taker = (size * price * raw_multiplier)
             .round()
-            .to_i32()
-            .expect("overflow");
+            .to_u64()
+            .expect("test fixture fits u64");
 
         assert_eq!(calculated_maker, expected_maker_amount, "SELL maker_amount mismatch");
         assert_eq!(calculated_taker, expected_taker_amount, "SELL taker_amount mismatch");
@@ -773,10 +778,49 @@ mod tests {
         let raw_multiplier = raw_multiplier_decimal();
         let result = (size * problematic_price * raw_multiplier)
             .round()
-            .to_i32()
-            .expect("overflow");
+            .to_u64()
+            .expect("test fixture fits u64");
 
         // 100 * 0.33 * 1_000_000 = 33_000_000
-        assert_eq!(result, 33_000_000);
+        assert_eq!(result, 33_000_000u64);
+    }
+
+    // ── Order sizes past the old i32 ceiling ────────────────────────────────
+
+    /// Amounts above `i32::MAX` raw (≈2147 units) used to panic in `build()` via
+    /// `.to_i32().expect("maker_amount overflow")`. They are ordinary orders — at $0.02 a
+    /// $50 buy is 2500 shares — so the ceiling was reachable on the live order path while
+    /// holding a position. Nothing in the CLOB protocol imposes it: amounts are sent as
+    /// decimal strings and signed as `uint256`.
+    #[test]
+    fn raw_amounts_past_the_old_i32_ceiling_convert() {
+        let raw_multiplier = raw_multiplier_decimal();
+
+        // 2500 shares at $0.02 — just past the old cap on the token leg.
+        let size = Decimal::from(2500);
+        let taker = raw_amount_u64(size * raw_multiplier, "taker_amount")
+            .expect("2500 shares must not overflow");
+        assert_eq!(taker, 2_500_000_000u64);
+        assert!(
+            taker > u64::from(i32::MAX.unsigned_abs()),
+            "the fixture must actually exceed the old i32 ceiling"
+        );
+
+        // A $10,000 notional — past the old cap on the USDC leg.
+        let maker = raw_amount_u64(Decimal::from(10_000) * raw_multiplier, "maker_amount")
+            .expect("$10k notional must not overflow");
+        assert_eq!(maker, 10_000_000_000u64);
+    }
+
+    /// A negative amount is a caller bug, but it must surface as a validation error rather
+    /// than a panic.
+    #[test]
+    fn negative_raw_amount_is_an_error_not_a_panic() {
+        let err = raw_amount_u64(Decimal::from(-1), "maker_amount")
+            .expect_err("a negative amount must be rejected");
+        assert!(
+            matches!(err, crate::ClobError::Validation(ValidationError::InvalidAmount { .. })),
+            "expected InvalidAmount, got {err:?}"
+        );
     }
 }
