@@ -48,34 +48,31 @@ fn crypto_price_transport_alert(
     }
 }
 
+/// Record that a failure mode has been alerted on; `true` the first time only.
+fn first_alert(flag: &AtomicBool) -> bool {
+    !flag.swap(true, Ordering::Relaxed)
+}
+
 /// Emit the crypto-price transport alert at most once per process per failure mode.
-///
-/// The `collapsible_match` suggestion here (fold each arm's `if` into a match guard) is
-/// BROKEN — applying it drops the `NonHttp2` arm and leaves a non-exhaustive match that
-/// does not compile (`cargo clippy --fix` rolls the whole crate back on it). It would also
-/// move a side-effecting atomic swap into a match guard, which is worse to read.
-#[allow(clippy::collapsible_match, reason = "the suggested fix does not compile; see above")]
 fn alert_crypto_price_transport(url: &str, version: Version, status: StatusCode) {
-    match crypto_price_transport_alert(url, version == Version::HTTP_2, status == StatusCode::FORBIDDEN) {
-        Some(CryptoPriceTransportAlert::Forbidden) => {
-            if !CRYPTO_PRICE_403_ALERTED.swap(true, Ordering::Relaxed) {
-                log::error!(
-                    "[transport-alert] crypto-price endpoint returned 403 ({url}). This is the \
-                     2026-06-23 Cloudflare failure mode: an HTTP/1.1 fallback being rejected, which \
-                     silently starves the strike/settlement feed. Verify the reqwest `http2` feature."
-                );
-            }
+    let is_http2 = version == Version::HTTP_2;
+    let is_forbidden = status == StatusCode::FORBIDDEN;
+    match crypto_price_transport_alert(url, is_http2, is_forbidden) {
+        Some(CryptoPriceTransportAlert::Forbidden) if first_alert(&CRYPTO_PRICE_403_ALERTED) => {
+            log::error!(
+                "[transport-alert] crypto-price endpoint returned 403 ({url}). This is the \
+                 2026-06-23 Cloudflare failure mode: an HTTP/1.1 fallback being rejected, which \
+                 silently starves the strike/settlement feed. Verify the reqwest `http2` feature."
+            );
         }
-        Some(CryptoPriceTransportAlert::NonHttp2) => {
-            if !CRYPTO_PRICE_NON_H2_ALERTED.swap(true, Ordering::Relaxed) {
-                log::error!(
-                    "[transport-alert] crypto-price request to {url} negotiated {version:?}, not HTTP/2. \
-                     Cloudflare 403s HTTP/1.1 on this endpoint — the client MUST negotiate h2 \
-                     (reqwest `http2` feature) or the strike/settlement feed will start failing."
-                );
-            }
+        Some(CryptoPriceTransportAlert::NonHttp2) if first_alert(&CRYPTO_PRICE_NON_H2_ALERTED) => {
+            log::error!(
+                "[transport-alert] crypto-price request to {url} negotiated {version:?}, not HTTP/2. \
+                 Cloudflare 403s HTTP/1.1 on this endpoint — the client MUST negotiate h2 \
+                 (reqwest `http2` feature) or the strike/settlement feed will start failing."
+            );
         }
-        None => {}
+        Some(_) | None => {}
     }
 }
 
