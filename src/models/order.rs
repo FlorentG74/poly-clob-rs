@@ -17,7 +17,9 @@ const NAME: &str = "Polymarket CTF Exchange";
 const VERSION: &str = "2";
 use crate::constants::{MIN_POLY_TOKEN_QUANTITY, POLYGON_CHAIN_ID, RAW_UNIT_MULTIPLIER};
 
-const CHAIN_ID: i32 = POLYGON_CHAIN_ID as i32;
+// `POLYGON_CHAIN_ID` is already `u64` and this is only ever widened to `U256`;
+// narrowing to `i32` in between served no purpose.
+const CHAIN_ID: u64 = POLYGON_CHAIN_ID;
 
 // V2 Non-Neg Risk markets
 const NON_NEG_RISK_VERIFYING_CONTRACT: Address =

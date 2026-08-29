@@ -812,6 +812,51 @@ mod tests {
         assert_eq!(maker, 10_000_000_000u64);
     }
 
+    /// End-to-end: an order past the old `i32` ceiling actually builds.
+    ///
+    /// `raw_amounts_past_the_old_i32_ceiling_convert` covers the conversion in isolation;
+    /// this drives the real `LimitOrderRequest::build()` so the ceiling cannot come back via
+    /// some other narrowing in the path.
+    #[tokio::test]
+    async fn an_order_past_the_old_i32_ceiling_builds() {
+        // Built by hand: `Account::default()` loads from the environment and panics.
+        let account = Account {
+            poly_address: "0x1234567890123456789012345678901234567890".to_string(),
+            pub_key: "0x1234567890123456789012345678901234567890".to_string(),
+            private_key: String::new(),
+            api_key: String::new(),
+            api_secret: String::new(),
+            api_passphrase: String::new(),
+            account_type: crate::models::AccountType::PolymarketAccount,
+            account_name: "test".to_string(),
+            telegram_chat_id: None,
+            telegram_bot_token: None,
+            builder_api_key: None,
+            builder_api_secret: None,
+            builder_api_passphrase: None,
+            signature_type: crate::api::relayer::SignatureType::default(),
+        };
+
+        // 2500 shares at $0.02 — $50 of a cheap token, and past i32::MAX raw on the token leg.
+        let order = LimitOrderRequest::builder()
+            .signer(&account)
+            .price(Decimal::new(2, 2))
+            .size(Decimal::from(2500))
+            .side(Side::Buy)
+            .token_id("1234567890")
+            .build()
+            .build()
+            .await
+            .expect("a 2500-share order must build, not panic or be rejected");
+
+        assert_eq!(order.taker_amount, 2_500_000_000, "2500 shares in raw units");
+        assert_eq!(order.maker_amount, 50_000_000, "$50 notional in raw units");
+        assert!(
+            order.taker_amount > u64::from(i32::MAX.unsigned_abs()),
+            "the fixture must actually exceed the old ceiling"
+        );
+    }
+
     /// A negative amount is a caller bug, but it must surface as a validation error rather
     /// than a panic.
     #[test]
