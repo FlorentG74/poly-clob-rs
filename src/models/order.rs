@@ -85,6 +85,13 @@ where
     serializer.serialize_str(&value.to_string())
 }
 
+/// Random EIP-712 salt for a new order.
+#[must_use]
+pub fn new_order_salt() -> String {
+    let now_ms = Utc::now().timestamp_millis() as u64;
+    ((rand::random::<f64>() * now_ms as f64) as u64).to_string()
+}
+
 #[derive(TypedBuilder, Clone)]
 #[builder(field_defaults(setter(into)))]
 pub struct Order {
@@ -109,6 +116,11 @@ pub struct Order {
     pub order_type: OrderType,
     #[builder(default = Utc::now().timestamp_millis() as u64)]
     pub timestamp: u64,
+    /// EIP-712 salt. Fixed at build time so resubmitting an order produces a byte-identical
+    /// signed body, which the CLOB can recognise as a duplicate instead of accepting it as a
+    /// second order.
+    #[builder(default = new_order_salt())]
+    pub salt: String,
     #[builder(default = [0u8; 32])]
     pub metadata: [u8; 32],
     #[builder(default = [0u8; 32])]

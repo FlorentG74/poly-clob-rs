@@ -227,17 +227,15 @@ impl<'a> LimitOrderRequest<'a> {
     /// * The HTTP request fails
     /// * The API returns an error response
     pub async fn execute_order(&self, order: Order) -> Result<String> {
-        let mut order = order;
 
         let request_path = POST_ORDER;
         let callable_url = format!("{}{}", CLOB_API, request_path);
 
+        // Only the L2 auth header is per-request; the order's own salt and timestamp are
+        // fixed at build time so a resubmit is byte-identical.
         let l2_timestamp = get_timestamp();
-        let now_ms = chrono::Utc::now().timestamp_millis() as u64;
-        order.timestamp = now_ms;
-        let order_salt = ((rand::random::<f64>() * now_ms as f64) as u64).to_string();
         let body = order.build_order_query_body(
-            order_salt.as_str(),
+            order.salt.clone().as_str(),
             self.signer.api_key.as_str(),
             self.signer.private_key.as_str(),
         )?;
@@ -544,6 +542,26 @@ mod tests {
 
     use super::*;
 
+    /// `Account::default()` loads from the environment and panics, so build one by hand.
+    fn test_account() -> Account {
+        Account {
+            poly_address: "0x1234567890123456789012345678901234567890".to_string(),
+            pub_key: "0x1234567890123456789012345678901234567890".to_string(),
+            private_key: String::new(),
+            api_key: String::new(),
+            api_secret: String::new(),
+            api_passphrase: String::new(),
+            account_type: crate::models::AccountType::PolymarketAccount,
+            account_name: "test".to_string(),
+            telegram_chat_id: None,
+            telegram_bot_token: None,
+            builder_api_key: None,
+            builder_api_secret: None,
+            builder_api_passphrase: None,
+            signature_type: crate::api::relayer::SignatureType::default(),
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Auth integration tests
     // -------------------------------------------------------------------------
@@ -819,23 +837,7 @@ mod tests {
     /// some other narrowing in the path.
     #[tokio::test]
     async fn an_order_past_the_old_i32_ceiling_builds() {
-        // Built by hand: `Account::default()` loads from the environment and panics.
-        let account = Account {
-            poly_address: "0x1234567890123456789012345678901234567890".to_string(),
-            pub_key: "0x1234567890123456789012345678901234567890".to_string(),
-            private_key: String::new(),
-            api_key: String::new(),
-            api_secret: String::new(),
-            api_passphrase: String::new(),
-            account_type: crate::models::AccountType::PolymarketAccount,
-            account_name: "test".to_string(),
-            telegram_chat_id: None,
-            telegram_bot_token: None,
-            builder_api_key: None,
-            builder_api_secret: None,
-            builder_api_passphrase: None,
-            signature_type: crate::api::relayer::SignatureType::default(),
-        };
+        let account = test_account();
 
         // 2500 shares at $0.02 — $50 of a cheap token, and past i32::MAX raw on the token leg.
         let order = LimitOrderRequest::builder()
@@ -855,6 +857,31 @@ mod tests {
             order.taker_amount > u64::from(i32::MAX.unsigned_abs()),
             "the fixture must actually exceed the old ceiling"
         );
+    }
+
+    /// A retried order must resubmit identical bytes, so a landed-but-timed-out POST is
+    /// rejected as a duplicate instead of becoming a second position.
+    #[tokio::test]
+    async fn a_rebuilt_order_keeps_its_salt_across_sends() {
+        let account = test_account();
+        let request = LimitOrderRequest::builder()
+            .signer(&account)
+            .price(Decimal::new(52, 2))
+            .size(Decimal::from(10))
+            .side(Side::Buy)
+            .token_id("1234567890")
+            .build();
+
+        let order = request.build().await.expect("order builds");
+        let clone = order.clone();
+
+        assert!(!order.salt.is_empty());
+        assert_eq!(order.salt, clone.salt, "a cloned order must keep its salt");
+        assert_eq!(order.timestamp, clone.timestamp);
+
+        // Two separately built orders must differ, or the salt is not random.
+        let other = request.build().await.expect("order builds");
+        assert_ne!(order.salt, other.salt, "each new order gets its own salt");
     }
 
     /// A negative amount is a caller bug, but it must surface as a validation error rather
