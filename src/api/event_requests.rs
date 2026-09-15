@@ -138,6 +138,60 @@ impl<'a> SeriesEventsRequest<'a> {
 
 
 // ============================================================================
+// EventsBySlugsRequest - batched by-slug fetch
+// ============================================================================
+
+/// Request builder for fetching many events by slug in one call.
+///
+/// `GET /events` accepts a repeated `slug` parameter, so a backfill over thousands of
+/// windows costs one request per [`EventsBySlugsRequest::MAX_SLUGS_PER_CALL`] rather than
+/// one per slug. Slugs gamma does not know are simply absent from the result.
+///
+/// Unlike [`SeriesEventsRequest`] this applies no `closed` or date filter — a backfill wants
+/// whatever gamma still retains, resolved or not.
+#[derive(TypedBuilder)]
+pub struct EventsBySlugsRequest {
+    pub slugs: Vec<String>,
+}
+
+impl EventsBySlugsRequest {
+    /// Gamma's practical ceiling on repeated `slug` params before the query string is
+    /// rejected; mirrors the chunk size `resolve_closed_markets_by_slug` uses on `/markets`.
+    pub const MAX_SLUGS_PER_CALL: usize = 100;
+
+    /// Fetch every requested event, chunking internally.
+    ///
+    /// # Errors
+    ///
+    /// If any chunk's request fails, the API returns a non-success status, or the body does
+    /// not deserialize into the expected shape.
+    pub async fn execute(&self) -> Result<Vec<PolyResponseEvent>> {
+        let client = get_http_client(Some(GAMMA_API));
+        let mut out = Vec::with_capacity(self.slugs.len());
+
+        for chunk in self.slugs.chunks(Self::MAX_SLUGS_PER_CALL) {
+            let mut req = WebserviceRequest {
+                api: GAMMA_API.to_string(),
+                url: GET_EVENTS.to_string(),
+                method: Method::GET,
+                with_pagination: false,
+                args: Vec::new(),
+                body: None,
+            };
+            for slug in chunk {
+                req.add_arg("slug".to_string(), slug.clone());
+            }
+            req.add_arg("limit".to_string(), chunk.len().to_string());
+
+            out.extend(
+                WebserviceRequest::fetch_one::<Vec<PolyResponseEvent>>(client, &req).await?,
+            );
+        }
+        Ok(out)
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -205,4 +259,35 @@ mod tests {
         assert!(resp.next_cursor.is_none());
     }
 
+}
+
+#[cfg(test)]
+mod backfill_probe {
+    use super::EventsBySlugsRequest;
+
+    /// Live gamma probe — asserts the batched fetch deserializes `eventMetadata.priceToBeat`.
+    #[tokio::test]
+    #[ignore = "hits the live gamma API"]
+    async fn fetches_price_to_beat_for_past_windows() {
+        crate::config::init_from_env();
+        let now = chrono::Utc::now().timestamp();
+        let slugs: Vec<String> = (2..6)
+            .map(|i| format!("btc-updown-5m-{}", (now - i * 300) / 300 * 300))
+            .collect();
+        let events = EventsBySlugsRequest::builder()
+            .slugs(slugs.clone())
+            .build()
+            .execute()
+            .await
+            .expect("gamma fetch failed");
+        assert!(!events.is_empty(), "no events returned for {slugs:?}");
+        let with_ptb = events
+            .iter()
+            .filter(|e| e.event_metadata.as_ref().and_then(|m| m.price_to_beat).is_some())
+            .count();
+        for e in &events {
+            println!("{} -> {:?}", e.slug, e.event_metadata);
+        }
+        assert!(with_ptb > 0, "no event carried eventMetadata.priceToBeat");
+    }
 }

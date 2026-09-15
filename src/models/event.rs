@@ -50,6 +50,24 @@ pub struct PolyResponseEvent {
     pub neg_risk_augmented: bool,
     pub pending_deployment: bool,
     pub deploying: bool,
+    /// Chainlink TWAP values gamma publishes for a crypto up/down event.
+    ///
+    /// Absent while the window is open and for non-crypto events; `priceToBeat` lands
+    /// ~450s after the window opens (before `finalPrice` and before `closed` flips).
+    pub event_metadata: Option<EventMetadata>,
+}
+
+/// Resolution inputs Polymarket publishes for a crypto up/down event.
+///
+/// `price_to_beat` is the Chainlink TWAP stamped at the window's opening second and
+/// `final_price` the one at its close; the event resolves Up on
+/// `final_price >= price_to_beat`. Both are populated only after the fact, so they are the
+/// authority for backfills, never for live decisions.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct EventMetadata {
+    pub price_to_beat: Option<f64>,
+    pub final_price: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
