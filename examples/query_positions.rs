@@ -9,7 +9,7 @@
 //! or set `POLY_ADDRESS` in the environment / `.env`.
 
 use poly_clob_rs::api::http_client::get_http_client;
-use poly_clob_rs::{ApiResponse, PositionsResponse, WebserviceRequest};
+use poly_clob_rs::{Position, WebserviceRequest};
 use std::env;
 
 #[tokio::main]
@@ -28,9 +28,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let request = WebserviceRequest::new_positions_ws_request(&user_address);
     let client = get_http_client(Some(&request.api));
 
-    let (_next_offset, positions): (i32, PositionsResponse) =
-        WebserviceRequest::fetch_batch(client, &request, 0).await?;
-    let count = positions.nb_results();
+    let positions = WebserviceRequest::fetch_data_api_all::<Position>(client, &request).await?;
+    let count = positions.len();
 
     if count == 0 {
         println!("No positions found for this address.");

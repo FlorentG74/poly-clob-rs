@@ -6,7 +6,6 @@ authors = ["Florent <FlorentG74@proton.me>"]
 description = "A Rust client library for the Polymarket CLOB (Central Limit Order Book) API"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/FlorentG74/poly-clob-rs"
-homepage = "https://github.com/FlorentG74/poly-clob-rs"
 documentation = "https://docs.rs/poly-clob-rs"
 readme = "README.md"
 keywords = ["polymarket", "prediction-markets", "clob", "api", "blockchain"]

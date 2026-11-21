@@ -62,7 +62,7 @@ fn host_of(url: &str) -> &str {
 ///
 /// Matches `polymarket.com` and any subdomain of it, which covers every endpoint the
 /// bot talks to: `clob`, `gamma-api`, `data-api`, `ws-subscriptions-clob`,
-/// `ws-live-data`, `relayer-v2` and `bridge`.
+/// `ws-live-v2`, `relayer-v2` and `bridge`.
 #[must_use]
 pub fn is_polymarket_url(url: &str) -> bool {
     let host = host_of(url).to_ascii_lowercase();
@@ -192,10 +192,10 @@ mod tests {
         for url in [
             "https://clob.polymarket.com",
             "https://gamma-api.polymarket.com/events?series_slug=btc-up-or-down-15m",
-            "https://data-api.polymarket.com/positions?limit=100",
+            "https://data-api.polymarket.com/v2/positions?limit=100",
             "https://polymarket.com/api/crypto-price",
             "wss://ws-subscriptions-clob.polymarket.com/ws/market",
-            "wss://ws-live-data.polymarket.com",
+            "wss://ws-live-v2.polymarket.com/ws",
             "https://relayer-v2.polymarket.com",
             "https://bridge.polymarket.com",
         ] {

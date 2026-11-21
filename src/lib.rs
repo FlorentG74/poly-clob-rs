@@ -136,6 +136,23 @@ pub use constants::*;
 pub use api::*;
 pub use models::*;
 
+/// One process-wide Tokio runtime for this crate's network tests.
+///
+/// The HTTP clients in [`api::http_client`] are process-global and pool connections whose
+/// dispatch task lives on the runtime that created them, so a `#[tokio::test]` (one runtime
+/// per test, dropped on return) leaves dead connections in the pool for the next test.
+/// Tests that make requests run under a plain `#[test]` via `test_runtime().block_on(...)`.
+#[cfg(test)]
+pub(crate) fn test_runtime() -> &'static tokio::runtime::Runtime {
+    static RT: std::sync::OnceLock<tokio::runtime::Runtime> = std::sync::OnceLock::new();
+    RT.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("failed to build the shared test runtime")
+    })
+}
+
 // Re-export error types for ergonomic error handling
 pub use api::error::{
     ApiError, AuthError, ClobError, HttpError, RelayerError, Result, SerializationError,

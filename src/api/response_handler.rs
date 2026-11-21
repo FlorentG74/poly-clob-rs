@@ -14,7 +14,7 @@ use super::GET_CRYPTO_PRICE;
 ///
 /// The 2026-06-23 outage: Polymarket's Cloudflare began 403-ing HTTP/1.1 requests to
 /// the crypto-price endpoint, silently starving the SVS strike/settlement feed. The
-/// `#[ignore]`d live smoke test guards it in CI, but nothing warned in production. This
+/// live smoke test guards it in CI, but nothing warned in production. This
 /// raises a loud runtime alert the first time either failure mode is observed on that
 /// endpoint: (1) the connection negotiated something other than HTTP/2, or (2) a 403.
 static CRYPTO_PRICE_NON_H2_ALERTED: AtomicBool = AtomicBool::new(false);

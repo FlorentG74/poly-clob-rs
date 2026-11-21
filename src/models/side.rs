@@ -41,7 +41,7 @@ use diesel::{AsExpression, FromSqlRow};
 /// assert_eq!(format!("{}", Side::Buy), "BUY");
 ///
 /// // Parse from string
-/// let side = Side::try_from("sell").unwrap();
+/// let side: Side = "sell".parse().unwrap();
 /// assert_eq!(side, Side::Sell);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -114,19 +114,21 @@ impl From<i32> for Side {
     }
 }
 
-impl TryFrom<&str> for Side {
-    type Error = String;
+impl std::str::FromStr for Side {
+    type Err = String;
 
     /// Parse a string into a Side (case-insensitive)
     ///
     /// # Errors
     ///
-    /// Returns an error if the string is not "buy", "BUY", "sell", or "SELL"
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        match value.to_uppercase().as_str() {
-            "BUY" => Ok(Side::Buy),
-            "SELL" => Ok(Side::Sell),
-            _ => Err(format!("Invalid side: {}", value)),
+    /// Returns an error if the string is not "buy" or "sell" (any case)
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        if value.eq_ignore_ascii_case("BUY") {
+            Ok(Side::Buy)
+        } else if value.eq_ignore_ascii_case("SELL") {
+            Ok(Side::Sell)
+        } else {
+            Err(format!("Invalid side: {value}"))
         }
     }
 }

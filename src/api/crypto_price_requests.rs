@@ -215,55 +215,56 @@ mod tests {
     /// fix is the reqwest `http2` feature; this test fails loudly if it regresses.
     ///
     /// Network-dependent, so excluded from the default run. Execute with:
-    ///   cargo test -p poly-clob-rs `crypto_price_live_smoke` -- --ignored --nocapture
-    #[tokio::test]
-    #[ignore = "live network smoke test; run manually with --ignored"]
-    async fn crypto_price_live_smoke_negotiates_http2() {
-        use chrono::Utc;
+    ///   cargo test -p poly-clob-rs `crypto_price_live_smoke` -- --nocapture
+    #[test]
+    fn crypto_price_live_smoke_negotiates_http2() {
+        crate::test_runtime().block_on(async {
+            use chrono::Utc;
 
-        // Most recent 15-minute boundary — already started, so the endpoint
-        // answers 200 (vs the future-event skip path) regardless of indexing.
-        let now = Utc::now().timestamp();
-        let event_start = now - now.rem_euclid(900);
+            // Most recent 15-minute boundary — already started, so the endpoint
+            // answers 200 (vs the future-event skip path) regardless of indexing.
+            let now = Utc::now().timestamp();
+            let event_start = now - now.rem_euclid(900);
 
-        let qparams = CryptoPriceRequest::builder()
-            .symbol("BTC")
-            .event_start_time(event_start)
-            .variant("fifteen")
-            .build()
-            .build_params()
-            .expect("build_params should succeed for a valid recent boundary");
+            let qparams = CryptoPriceRequest::builder()
+                .symbol("BTC")
+                .event_start_time(event_start)
+                .variant("fifteen")
+                .build()
+                .build_params()
+                .expect("build_params should succeed for a valid recent boundary");
 
-        let query: String = qparams
-            .iter()
-            .map(|(k, v)| format!("{k}={v}"))
-            .collect::<Vec<_>>()
-            .join("&");
-        let url = format!("{}{}?{}", POLYMARKET_API, GET_CRYPTO_PRICE, query);
-        let client = crate::api::http_client::get_http_client(None);
+            let query: String = qparams
+                .iter()
+                .map(|(k, v)| format!("{k}={v}"))
+                .collect::<Vec<_>>()
+                .join("&");
+            let url = format!("{}{}?{}", POLYMARKET_API, GET_CRYPTO_PRICE, query);
+            let client = crate::api::http_client::get_http_client(None);
 
-        let resp = client
-            .get(&url)
-            .send()
-            .await
-            .expect("transport-level failure reaching crypto-price endpoint");
+            let resp = client
+                .get(&url)
+                .send()
+                .await
+                .expect("transport-level failure reaching crypto-price endpoint");
 
-        let status = resp.status();
-        let version = resp.version();
-        eprintln!("[crypto-price smoke] status={status} version={version:?} url={url} params={qparams:?}");
+            let status = resp.status();
+            let version = resp.version();
+            eprintln!("[crypto-price smoke] status={status} version={version:?} url={url} params={qparams:?}");
 
-        assert!(
-            status.is_success(),
-            "crypto-price returned {status} (expected 2xx). A 403 here means the client spoke \
-             HTTP/1.1 and Cloudflare rejected it — verify the reqwest `http2` feature is enabled."
-        );
-        // Compare on the Debug form to avoid pinning a specific http/reqwest Version re-export.
-        assert_eq!(
-            format!("{version:?}"),
-            "HTTP/2.0",
-            "expected HTTP/2 negotiation but got {version:?}. Cloudflare 403s HTTP/1.1 on this endpoint, \
-             so the client MUST negotiate h2 (reqwest `http2` feature)."
-        );
+            assert!(
+                status.is_success(),
+                "crypto-price returned {status} (expected 2xx). A 403 here means the client spoke \
+                 HTTP/1.1 and Cloudflare rejected it — verify the reqwest `http2` feature is enabled."
+            );
+            // Compare on the Debug form to avoid pinning a specific http/reqwest Version re-export.
+            assert_eq!(
+                format!("{version:?}"),
+                "HTTP/2.0",
+                "expected HTTP/2 negotiation but got {version:?}. Cloudflare 403s HTTP/1.1 on this endpoint, \
+                 so the client MUST negotiate h2 (reqwest `http2` feature)."
+            );
+        });
     }
 }
 

@@ -363,96 +363,98 @@ mod tests {
     /// 2. Finds the current active event (first with `end_date` > now)
     /// 3. Fetches the full event data to get market token IDs
     /// 4. Queries order books for all token IDs
-    #[tokio::test]
-    #[ignore = "live gamma+CLOB APIs, depends on current wall-clock event — run with --ignored"]
-    async fn test_fetch_orderbooks_for_sol_15m_current_event() {
-        use crate::api::event_requests::{EventBySlugRequest, SeriesEventsRequest};
-        use chrono::Utc;
+    #[test]
+    fn test_fetch_orderbooks_for_sol_15m_current_event() {
+        crate::test_runtime().block_on(async {
+            use crate::api::event_requests::{EventBySlugRequest, SeriesEventsRequest};
+            use chrono::Utc;
 
-        let event_series_slug = "sol-up-or-down-15m";
+            crate::config::init_from_env();
+            let event_series_slug = "sol-up-or-down-15m";
 
-        // Step 1: Fetch active events for the series
-        println!("Fetching event series: {}", event_series_slug);
-        let events = SeriesEventsRequest::builder()
-            .series_slug(event_series_slug)
-            .build()
-            .execute()
-            .await
-            .expect("Failed to fetch series events");
+            // Step 1: Fetch active events for the series
+            println!("Fetching event series: {}", event_series_slug);
+            let events = SeriesEventsRequest::builder()
+                .series_slug(event_series_slug)
+                .build()
+                .execute()
+                .await
+                .expect("Failed to fetch series events");
 
-        assert!(!events.is_empty(), "No events returned for series");
+            assert!(!events.is_empty(), "No events returned for series");
 
-        // Step 2: Find the current active event (first with end_date > now)
-        let now = Utc::now();
-        let current_event = events
-            .iter()
-            .find(|e| e.end_date > now)
-            .expect("No active event found in series");
+            // Step 2: Find the current active event (first with end_date > now)
+            let now = Utc::now();
+            let current_event = events
+                .iter()
+                .find(|e| e.end_date > now)
+                .expect("No active event found in series");
 
-        println!(
-            "Current event: {} (ends: {})",
-            current_event.slug, current_event.end_date
-        );
-
-        // Step 3: Fetch the full event data to get market token IDs
-        let full_event = EventBySlugRequest::builder()
-            .slug(current_event.slug.as_str())
-            .build()
-            .execute()
-            .await
-            .expect("Failed to fetch full event data");
-
-        println!("Event has {} markets", full_event.markets.len());
-
-        // Extract token IDs from all markets
-        let mut token_ids: Vec<String> = Vec::new();
-        for market in &full_event.markets {
-            token_ids.extend(market.clob_token_ids.iter().cloned());
-        }
-
-        assert!(!token_ids.is_empty(), "No token IDs found in event markets");
-        println!("Found {} token IDs: {:?}", token_ids.len(), token_ids);
-
-        // Step 4: Query order books for all token IDs
-        let books = OrderBooksRequest::builder()
-            .token_ids(token_ids.clone())
-            .build()
-            .execute()
-            .await
-            .expect("Failed to fetch order books");
-
-        println!("Fetched {} order books", books.len());
-        assert_eq!(
-            books.len(),
-            token_ids.len(),
-            "Should receive one order book per token ID"
-        );
-
-        // Verify order book data
-        for book in &books {
             println!(
-                "Order book for token {}: {} bids, {} asks",
-                book.asset_id,
-                book.bids.len(),
-                book.asks.len()
+                "Current event: {} (ends: {})",
+                current_event.slug, current_event.end_date
             );
 
-            // Verify the asset_id matches one of our requested token IDs
-            assert!(
-                token_ids.contains(&book.asset_id),
-                "Unexpected asset_id in response: {}",
-                book.asset_id
+            // Step 3: Fetch the full event data to get market token IDs
+            let full_event = EventBySlugRequest::builder()
+                .slug(current_event.slug.as_str())
+                .build()
+                .execute()
+                .await
+                .expect("Failed to fetch full event data");
+
+            println!("Event has {} markets", full_event.markets.len());
+
+            // Extract token IDs from all markets
+            let mut token_ids: Vec<String> = Vec::new();
+            for market in &full_event.markets {
+                token_ids.extend(market.clob_token_ids.iter().cloned());
+            }
+
+            assert!(!token_ids.is_empty(), "No token IDs found in event markets");
+            println!("Found {} token IDs: {:?}", token_ids.len(), token_ids);
+
+            // Step 4: Query order books for all token IDs
+            let books = OrderBooksRequest::builder()
+                .token_ids(token_ids.clone())
+                .build()
+                .execute()
+                .await
+                .expect("Failed to fetch order books");
+
+            println!("Fetched {} order books", books.len());
+            assert_eq!(
+                books.len(),
+                token_ids.len(),
+                "Should receive one order book per token ID"
             );
 
-            // Log best bid/ask if available
-            if let Some(best_bid) = book.bids.last() {
-                println!("  Best bid: {:?} @ size {:?}", best_bid.price, best_bid.size);
-            }
-            if let Some(best_ask) = book.asks.last() {
-                println!("  Best ask: {:?} @ size {:?}", best_ask.price, best_ask.size);
-            }
-        }
+            // Verify order book data
+            for book in &books {
+                println!(
+                    "Order book for token {}: {} bids, {} asks",
+                    book.asset_id,
+                    book.bids.len(),
+                    book.asks.len()
+                );
 
-        println!("Test passed successfully!");
+                // Verify the asset_id matches one of our requested token IDs
+                assert!(
+                    token_ids.contains(&book.asset_id),
+                    "Unexpected asset_id in response: {}",
+                    book.asset_id
+                );
+
+                // Log best bid/ask if available
+                if let Some(best_bid) = book.bids.last() {
+                    println!("  Best bid: {:?} @ size {:?}", best_bid.price, best_bid.size);
+                }
+                if let Some(best_ask) = book.asks.last() {
+                    println!("  Best ask: {:?} @ size {:?}", best_ask.price, best_ask.size);
+                }
+            }
+
+            println!("Test passed successfully!");
+        });
     }
 }

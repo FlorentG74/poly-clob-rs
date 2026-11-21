@@ -5,7 +5,7 @@
 use crate::api::response_handler::handle_api_response;
 use reqwest::{Client, Method};
 
-use crate::models::{ApiResponse, KeysetApiResponse};
+use crate::models::{ApiResponse, DataApiPage, KeysetApiResponse};
 
 
 
@@ -461,6 +461,79 @@ pub async fn fetch_keyset<T>(
                     tokio::time::sleep(delay).await;
                 }
                 Err(e) => return Err(e),
+            }
+        }
+    }
+
+    /// Fetch one page of a Data API v2 route.
+    ///
+    /// v2 pages by an opaque `cursor` and rejects `offset` with a 400, so the request
+    /// must be built with `with_pagination: false`; its `limit` arg (if any) sets the
+    /// first-page size. A cursor resume must repeat the original anchor (`user` /
+    /// `condition`), which re-sending `args` unchanged does.
+    ///
+    /// # Errors
+    ///
+    /// If the request fails, the API returns a non-success status, or the body does not
+    /// deserialize into a `DataApiPage<T>`.
+    pub async fn fetch_data_api_page<T>(
+        client: &Client,
+        web_service_request: &WebserviceRequest,
+        cursor: Option<&str>,
+    ) -> crate::Result<DataApiPage<T>>
+    where
+        T: for<'a> serde::Deserialize<'a>,
+    {
+        let mut args = web_service_request.args.clone();
+        if let Some(c) = cursor {
+            args.push(("cursor".to_string(), c.to_string()));
+        }
+        let page_request = WebserviceRequest {
+            api: web_service_request.api.clone(),
+            url: web_service_request.url.clone(),
+            method: web_service_request.method.clone(),
+            with_pagination: false,
+            args,
+            body: web_service_request.body.clone(),
+        };
+        Self::fetch_one::<DataApiPage<T>>(client, &page_request).await
+    }
+
+    /// Fetch every row of a Data API v2 route by following `next_cursor` to the end.
+    ///
+    /// # Errors
+    ///
+    /// If any page fails (see [`Self::fetch_data_api_page`]), or the server hands back the
+    /// cursor it was just given, which would otherwise loop forever.
+    pub async fn fetch_data_api_all<T>(
+        client: &Client,
+        web_service_request: &WebserviceRequest,
+    ) -> crate::Result<Vec<T>>
+    where
+        T: for<'a> serde::Deserialize<'a>,
+    {
+        let mut rows = Vec::new();
+        let mut cursor: Option<String> = None;
+        loop {
+            let page =
+                Self::fetch_data_api_page::<T>(client, web_service_request, cursor.as_deref()).await?;
+            let next = page.next_cursor().map(str::to_owned);
+            rows.extend(page.data);
+            match next {
+                Some(c) if cursor.as_deref() == Some(c.as_str()) => {
+                    return Err(crate::SerializationError::FieldParse {
+                        field: "next_cursor".to_string(),
+                        message: format!(
+                            "{}{} repeated the request cursor after {} row(s)",
+                            web_service_request.api,
+                            web_service_request.url,
+                            rows.len()
+                        ),
+                    }
+                    .into());
+                }
+                Some(c) => cursor = Some(c),
+                None => return Ok(rows),
             }
         }
     }

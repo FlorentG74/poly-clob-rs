@@ -7,7 +7,7 @@
 //! cargo run --example fetch_activity
 //! ```
 
-use poly_clob_rs::api::activity_requests::{ActivityRequest, ActivityType, ActivitySortBy, SortDirection};
+use poly_clob_rs::api::activity_requests::{ActivityRequest, ActivityType, SortDirection};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -21,7 +21,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .user("0x961afce6bd9aec79c5cf09d2d4dac2b434b23361")
         .limit(10) // Limit to 10 activities for this example
         .activity_type(vec![ActivityType::TRADE]) // Only trades
-        .sort_by(ActivitySortBy::TIMESTAMP)
         .sort_direction(SortDirection::DESC)
         .build();
 
@@ -29,7 +28,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  User: {}", request.user);
     println!("  Limit: {}", request.limit);
     println!("  Activity Types: {:?}", request.activity_type.iter().map(|t| t.as_str()).collect::<Vec<_>>());
-    println!("  Sort By: {}", request.sort_by.as_str());
     println!("  Sort Direction: {}", request.sort_direction.as_str());
     println!();
 

@@ -570,30 +570,32 @@ mod tests {
     /// A non-401 response (including 404 "not found") means the HMAC was accepted.
     ///
     /// Run with: cargo test -p poly-clob-rs `test_order_status_auth_live` -- --nocapture
-    #[tokio::test]
-    async fn test_order_status_auth_live() {
-        crate::config::init_from_env();
-        let account = crate::models::Account::load_poly_account()
-            .expect("load poly account from .env");
+    #[test]
+    fn test_order_status_auth_live() {
+        crate::test_runtime().block_on(async {
+            crate::config::init_from_env();
+            let account = crate::models::Account::load_poly_account()
+                .expect("load poly account from .env");
 
-        let order_id = "0xfe71c215fb15bd66b983e98cf9f599a84b6581b6052fdb07b6317a33049cd662";
+            let order_id = "0xfe71c215fb15bd66b983e98cf9f599a84b6581b6052fdb07b6317a33049cd662";
 
-        println!("\n=== Order auth test ===");
-        println!("order_id: {}", order_id);
+            println!("\n=== Order auth test ===");
+            println!("order_id: {}", order_id);
 
-        let result = get_order_by_id(&account, order_id).await;
+            let result = get_order_by_id(&account, order_id).await;
 
-        println!("result: {:?}", result);
+            println!("result: {:?}", result);
 
-        // Auth is working if we get anything other than a 401 error.
-        // A 404 "not found" (order expired/gone) still means auth succeeded.
-        if let Err(ref e) = result {
-            assert!(
-                !e.to_string().contains("unauthorized"),
-                "L2 auth rejected: {}",
-                e
-            );
-        }
+            // Auth is working if we get anything other than a 401 error.
+            // A 404 "not found" (order expired/gone) still means auth succeeded.
+            if let Err(ref e) = result {
+                assert!(
+                    !e.to_string().contains("unauthorized"),
+                    "L2 auth rejected: {}",
+                    e
+                );
+            }
+        });
     }
 
     // -------------------------------------------------------------------------

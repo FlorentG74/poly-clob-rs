@@ -12,7 +12,7 @@
 //! - [`PolyResponseMarket`] / [`MarketsResponse`] - Market data
 //! - [`PolyResponseEvent`] / [`EventResponse`] - Event data
 //! - [`PolyResponseEventSeries`] / [`EventSeriesResponse`] - Event series data
-//! - [`Position`] / [`PositionsResponse`] - User positions
+//! - [`Position`] - User positions
 //! - [`OpenOrder`] - Open order information
 //! - [`PolymarketPrice`] / [`PolymarketPricesResponse`] - Price data
 //! - [`PolyResponseTag`] / [`PolymarketTagsResponse`] - Tags/categories

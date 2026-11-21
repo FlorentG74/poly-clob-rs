@@ -1,13 +1,11 @@
 //! Live network integration test for the Bridge API client.
 //!
 //! Unlike `bridge_test.rs` (which runs fully offline against an in-process mock
-//! server), this test hits the real `bridge.polymarket.com` endpoint. It is
-//! therefore marked `#[ignore]` so it is skipped by a plain `cargo test`, and
-//! must be opted into explicitly:
+//! server), this test hits the real `bridge.polymarket.com` endpoint:
 //!
 //! ```bash
 //! # Generates and prints deposit addresses for POLY_ADDRESS from .env
-//! cargo test -p poly-clob-rs --test bridge_network_test -- --ignored --nocapture
+//! cargo test -p poly-clob-rs --test bridge_network_test -- --nocapture
 //! ```
 //!
 //! It reads the wallet address from the `POLY_ADDRESS` environment variable
@@ -17,7 +15,6 @@
 use poly_clob_rs::api::bridge::BridgeClient;
 
 #[tokio::test]
-#[ignore = "hits the live bridge.polymarket.com network; run with --ignored --nocapture"]
 async fn live_show_deposit_addresses_for_env_wallet() {
     // Load .env from the crate dir or any parent (workspace root holds it).
     poly_clob_rs::config::init_from_env();

@@ -6,7 +6,7 @@
 //!
 //! Run with:
 //! ```text
-//! cargo test -p poly-clob-rs --test dns_override_test -- --ignored --nocapture
+//! cargo test -p poly-clob-rs --test dns_override_test -- --nocapture
 //! ```
 
 use std::time::Instant;
@@ -29,7 +29,6 @@ fn init_config_with_resolver() {
 
 /// The override must resolve Polymarket names even when the system resolver lies.
 #[tokio::test]
-#[ignore = "requires network access"]
 async fn dns_override_reaches_gamma_api() {
     init_config_with_resolver();
 
@@ -52,7 +51,6 @@ async fn dns_override_reaches_gamma_api() {
 
 /// Repeat lookups must be served from hickory's cache, not re-queried on the wire.
 #[tokio::test]
-#[ignore = "requires network access"]
 async fn repeat_lookups_are_cached() {
     init_config_with_resolver();
 

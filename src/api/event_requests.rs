@@ -266,28 +266,29 @@ mod backfill_probe {
     use super::EventsBySlugsRequest;
 
     /// Live gamma probe — asserts the batched fetch deserializes `eventMetadata.priceToBeat`.
-    #[tokio::test]
-    #[ignore = "hits the live gamma API"]
-    async fn fetches_price_to_beat_for_past_windows() {
-        crate::config::init_from_env();
-        let now = chrono::Utc::now().timestamp();
-        let slugs: Vec<String> = (2..6)
-            .map(|i| format!("btc-updown-5m-{}", (now - i * 300) / 300 * 300))
-            .collect();
-        let events = EventsBySlugsRequest::builder()
-            .slugs(slugs.clone())
-            .build()
-            .execute()
-            .await
-            .expect("gamma fetch failed");
-        assert!(!events.is_empty(), "no events returned for {slugs:?}");
-        let with_ptb = events
-            .iter()
-            .filter(|e| e.event_metadata.as_ref().and_then(|m| m.price_to_beat).is_some())
-            .count();
-        for e in &events {
-            println!("{} -> {:?}", e.slug, e.event_metadata);
-        }
-        assert!(with_ptb > 0, "no event carried eventMetadata.priceToBeat");
+    #[test]
+    fn fetches_price_to_beat_for_past_windows() {
+        crate::test_runtime().block_on(async {
+            crate::config::init_from_env();
+            let now = chrono::Utc::now().timestamp();
+            let slugs: Vec<String> = (2..6)
+                .map(|i| format!("btc-updown-5m-{}", (now - i * 300) / 300 * 300))
+                .collect();
+            let events = EventsBySlugsRequest::builder()
+                .slugs(slugs.clone())
+                .build()
+                .execute()
+                .await
+                .expect("gamma fetch failed");
+            assert!(!events.is_empty(), "no events returned for {slugs:?}");
+            let with_ptb = events
+                .iter()
+                .filter(|e| e.event_metadata.as_ref().and_then(|m| m.price_to_beat).is_some())
+                .count();
+            for e in &events {
+                println!("{} -> {:?}", e.slug, e.event_metadata);
+            }
+            assert!(with_ptb > 0, "no event carried eventMetadata.priceToBeat");
+        });
     }
 }

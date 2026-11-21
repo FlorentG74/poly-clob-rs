@@ -151,7 +151,7 @@ Supported order types: `FOK`, `FAK`, `GTC` (default), `GTD`. The API enforces pr
 
 ```rust
 use poly_clob_rs::api::http_client::get_http_client;
-use poly_clob_rs::{ApiResponse, PositionsResponse, WebserviceRequest};
+use poly_clob_rs::{Position, WebserviceRequest};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -160,8 +160,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let request = WebserviceRequest::new_positions_ws_request("0x1234...");
     let client = get_http_client(Some(&request.api));
 
-    let (_next, positions): (i32, PositionsResponse) =
-        WebserviceRequest::fetch_batch(client, &request, 0).await?;
+    // Follows the Data API v2 cursor to the last page.
+    let positions = WebserviceRequest::fetch_data_api_all::<Position>(client, &request).await?;
 
     for position in positions.iter() {
         println!("{} {}: size={}, avg_price={}, pnl={}%",
@@ -195,7 +195,7 @@ Always obtain clients from `api::http_client::get_http_client(Some(url))` rather
 
 - **Gamma API** (`https://gamma-api.polymarket.com`) — market and event data
 - **CLOB API** (`https://clob.polymarket.com`) — order books and trading
-- **Data API** (`https://data-api.polymarket.com`) — positions and activity
+- **Data API v2** (`https://data-api.polymarket.com/v2`) — positions and activity (cursor-paginated)
 - **Relayer** — gasless transactions (redeem, approvals) via the Builder API
 
 ## Authentication

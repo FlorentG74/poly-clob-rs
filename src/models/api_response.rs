@@ -37,3 +37,24 @@ where
     let opt = Option::<String>::deserialize(deserializer)?;
     Ok(opt.filter(|s| !s.is_empty()))
 }
+
+/// Data API v2 response envelope: every route wraps its rows in `data`, and paginated
+/// routes add a `pagination` object whose `next_cursor` is `null` on the last page.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct DataApiPage<T> {
+    pub data: Vec<T>,
+    #[serde(default)]
+    pub pagination: Option<DataApiPagination>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct DataApiPagination {
+    #[serde(default, deserialize_with = "deserialize_cursor")]
+    pub next_cursor: Option<String>,
+}
+
+impl<T> KeysetApiResponse for DataApiPage<T> {
+    fn next_cursor(&self) -> Option<&str> {
+        self.pagination.as_ref().and_then(|p| p.next_cursor.as_deref())
+    }
+}

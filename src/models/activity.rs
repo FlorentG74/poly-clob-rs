@@ -1,11 +1,7 @@
 use serde::{Serialize, Deserialize};
 
-use super::ApiResponse;
-
-pub type UserActivityResponse = Vec<UserActivity>;
-
+/// A `/v2/activity` row. `rename` marks fields whose Rust name differs from the wire name.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct UserActivity {
     pub proxy_wallet: String,
     pub timestamp: i64,
@@ -16,6 +12,7 @@ pub struct UserActivity {
     pub usdc_size: f64,
     pub transaction_hash: String,
     pub price: f64,
+    #[serde(rename = "token_id")]
     pub asset: String,
     pub side: String,
     pub outcome_index: i64,
@@ -24,21 +21,14 @@ pub struct UserActivity {
     pub icon: String,
     pub event_slug: String,
     pub outcome: String,
+    #[serde(default)]
     pub name: String,
+    #[serde(default)]
     pub pseudonym: String,
+    #[serde(default)]
     pub bio: String,
+    #[serde(default)]
     pub profile_image: String,
+    #[serde(default)]
     pub profile_image_optimized: String,
-}
-
-impl ApiResponse for UserActivity {
-    fn nb_results(&self) -> usize {
-        1 // Single activity item
-    }
-}
-
-impl ApiResponse for UserActivityResponse {
-    fn nb_results(&self) -> usize {
-        self.len()
-    }
 }
