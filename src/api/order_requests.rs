@@ -10,10 +10,10 @@ use typed_builder::TypedBuilder;
 use crate::api::auth::get_timestamp;
 use crate::api::authed_request::{send_authed, send_authed_text, Method};
 use crate::api::response_handler::handle_api_response;
-use crate::models::{Account, Order, OrderType, Side};
+use crate::models::{Account, ClobTrade, ClobTradesPage, Order, OrderType, Side};
 use crate::{market_requests, MarketOrders, OpenOrder, WebserviceRequest, ORDERS};
 
-use super::clob_endpoints::{CLOB_API, CANCEL, GET_ORDER, POST_ORDER};
+use super::clob_endpoints::{CLOB_API, CANCEL, GET_ORDER, POST_ORDER, TRADES};
 
 use crate::constants::raw_multiplier_decimal;
 
@@ -417,6 +417,36 @@ pub async fn get_order_by_id(signer: &Account, order_id: &str) -> Result<OrderSt
     })
 }
 
+/// Cursor value marking the last page of a paginated CLOB listing.
+const END_CURSOR: &str = "LTE=";
+
+/// The account's trades matched at or after `after` (Unix seconds), every page.
+///
+/// # Errors
+///
+/// If signing fails, or the API request/deserialization does.
+pub async fn get_account_trades(signer: &Account, after: i64) -> Result<Vec<ClobTrade>> {
+    let mut trades = Vec::new();
+    let mut cursor = String::new();
+    loop {
+        let mut url = format!("{CLOB_API}{TRADES}");
+        WebserviceRequest::add_param_to_url(&mut url, "after", &after.to_string());
+        if !cursor.is_empty() {
+            WebserviceRequest::add_param_to_url(&mut url, "next_cursor", &cursor);
+        }
+        let text = send_authed_text(signer, Method::Get, TRADES, &url, "", "").await?;
+        let page: ClobTradesPage = serde_json::from_str(&text).map_err(|e| crate::SerializationError::JsonDeserialize {
+            message: e.to_string(),
+            raw_response: text.clone(),
+        })?;
+        trades.extend(page.data);
+        if page.next_cursor.is_empty() || page.next_cursor == END_CURSOR || page.next_cursor == cursor {
+            return Ok(trades);
+        }
+        cursor = page.next_cursor;
+    }
+}
+
 /// Returns all open orders for the given account.
 ///
 /// # Errors
@@ -594,6 +624,31 @@ mod tests {
                     "L2 auth rejected: {}",
                     e
                 );
+            }
+        });
+    }
+
+    /// `get_account_trades` authenticates, parses every page, and returns this account's
+    /// trades with ids, match times and the role fields the ledger attributes fills by.
+    #[test]
+    fn test_account_trades_live() {
+        crate::test_runtime().block_on(async {
+            crate::config::init_from_env();
+            let account = crate::models::Account::load_poly_account().expect("load poly account from .env");
+            let since = chrono::Utc::now().timestamp() - 365 * 86_400;
+            let trades = get_account_trades(&account, since).await.expect("GET /data/trades");
+            println!("{} trade(s) in a year", trades.len());
+            for t in &trades {
+                // Our role: TAKER (owner is our key) or MAKER (some maker order is ours).
+                let ours = t.maker_orders.iter().filter(|m| m.owner == account.api_key).count();
+                match t.trader_side.as_str() {
+                    "TAKER" => assert!(t.owner == account.api_key && ours == 0, "taker trade {t:?}"),
+                    "MAKER" => assert!(ours > 0, "maker trade without our maker order: {t:?}"),
+                    other => panic!("trader_side {other:?}: {t:?}"),
+                }
+                assert!(!t.id.is_empty(), "trade without id: {t:?}");
+                let ts: i64 = t.match_time.parse().unwrap_or_else(|_| panic!("match_time {:?}", t.match_time));
+                assert!(ts >= since - 86_400, "trade {} matched at {ts}, before the requested window", t.id);
             }
         });
     }
